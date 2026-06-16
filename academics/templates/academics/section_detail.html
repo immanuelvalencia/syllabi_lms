@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.name }} | {{ course.title }}{% endblock %}
+{% block page_title %}{{ section.name }}{% endblock %}
+
+{% block content %}
+<div class="section-layout">
+    <main>
+        <section class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-xl-row justify-content-between gap-3">
+                    <div>
+                        <p class="eyebrow mb-1">{{ course.code }}</p>
+                        <h2 class="h3 fw-bold mb-2">{{ section.name }}</h2>
+                        <p class="text-secondary mb-0">
+                            {{ section.schedule_title|default:"Class schedule" }} -
+                            {{ section.meeting_days|default:"Days not set" }}
+                            {% if section.start_time %} {{ section.start_time|time:"g:i A" }}{% endif %}
+                            {% if section.end_time %} to {{ section.end_time|time:"g:i A" }}{% endif %}
+                        </p>
+                    </div>
+                    <a class="btn btn-outline-success align-self-start" href="{{ course.get_absolute_url }}">Back to sections</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="analytics" class="row g-3 mb-4">
+            <div class="col-12 col-md-4">
+                {% include "components/stat_card.html" with label="Students" value=student_count caption="Section enrollment" %}
+            </div>
+            <div class="col-12 col-md-4">
+                {% include "components/stat_card.html" with label="Course Students" value=course_student_count caption="All sections" %}
+            </div>
+            <div class="col-12 col-md-4">
+                {% include "components/stat_card.html" with label="Engagement" value=completion_score|stringformat:"s"|add:"%" caption="Estimated activity" %}
+            </div>
+        </section>
+
+        <section id="students" class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <p class="eyebrow mb-1">Roster</p>
+                <h2 class="h4 mb-3">Students</h2>
+                <div class="list-group list-group-flush">
+                    {% for enrollment in section.section_enrollments.all %}
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center gap-3">
+                            <div>
+                                <strong>{{ enrollment.student.get_full_name|default:enrollment.student.username }}</strong>
+                                <div class="small text-secondary">{{ enrollment.student.email|default:"No email" }}</div>
+                            </div>
+                            <span class="badge text-bg-success-subtle text-success-emphasis">Active</span>
+                        </div>
+                    {% empty %}
+                        <p class="text-secondary mb-0">No students enrolled in this section yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section id="ai-tools">
+            {% include "components/ai_tool_panel.html" with title="Section AI tools" ai_requests=ai_requests course=course section=section %}
+        </section>
+    </main>
+
+    <aside class="section-side-nav card border-0 shadow-sm">
+        <div class="card-body">
+            <p class="eyebrow mb-2">Section Navigation</p>
+            <nav class="nav flex-column">
+                <a class="nav-link active" href="#analytics"><i class="bi bi-bar-chart me-2"></i>Section Analytics</a>
+                <a class="nav-link" href="#students"><i class="bi bi-people me-2"></i>Students</a>
+                <a class="nav-link" href="#ai-tools"><i class="bi bi-robot me-2"></i>AI Tools</a>
+                <a class="nav-link" href="{{ course.get_absolute_url }}"><i class="bi bi-list-task me-2"></i>All Sections</a>
+                <a class="nav-link" href="{% url 'academics:teacher_courses' %}"><i class="bi bi-journal-bookmark me-2"></i>All Courses</a>
+            </nav>
+            <hr>
+            <div class="vstack gap-2">
+                <button class="btn btn-light border text-start" type="button"><i class="bi bi-broadcast me-2"></i>View Stream</button>
+                <button class="btn btn-light border text-start" type="button"><i class="bi bi-calendar3 me-2"></i>Calendar</button>
+                <button class="btn btn-light border text-start" type="button"><i class="bi bi-bell me-2"></i>Notifications</button>
+            </div>
+        </div>
+    </aside>
+</div>
+{% endblock %}

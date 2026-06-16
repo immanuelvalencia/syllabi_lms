@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Create Course | Syllabi LMS{% endblock %}
+{% block page_title %}Create Course{% endblock %}
+
+{% block content %}
+<section class="row">
+    <div class="col-12 col-lg-8 col-xl-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="eyebrow mb-1">Course setup</p>
+                <h2 class="h4 mb-4">Course Details</h2>
+                <form class="vstack gap-3" method="post">
+                    {% csrf_token %}
+                    {{ form.non_field_errors }}
+                    {% for field in form %}
+                        <div>
+                            <label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        </div>
+                    {% endfor %}
+                    <div>
+                        <button class="btn btn-success" type="submit">Create course</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

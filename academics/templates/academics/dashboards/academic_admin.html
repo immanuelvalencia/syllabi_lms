@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Academic Admin Dashboard | Syllabi LMS{% endblock %}
+{% block page_title %}Academic Admin Dashboard{% endblock %}
+
+{% block content %}
+<section class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Students" value=total_students caption="Registered learners" %}</div>
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Instructors" value=total_instructors caption="Teaching staff" %}</div>
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Courses" value=total_courses caption="Academic catalog" %}</div>
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="At Risk" value=at_risk_count caption="Needs attention" %}</div>
+</section>
+
+<section class="row g-4">
+    <div class="col-12 col-xl-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="eyebrow mb-1">Institution</p>
+                <h2 class="h4 mb-3">Course Activity</h2>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Course</th>
+                                <th>Instructor</th>
+                                <th>Students</th>
+                                <th>Assignments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for course in course_activity %}
+                                <tr>
+                                    <td><a class="text-decoration-none text-success fw-semibold" href="{{ course.get_absolute_url }}">{{ course.code }} - {{ course.title }}</a></td>
+                                    <td>{{ course.instructor.get_full_name|default:course.instructor.username }}</td>
+                                    <td>{{ course.student_total }}</td>
+                                    <td>{{ course.assignment_total }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="4">No courses yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <p class="eyebrow mb-1">AI Load</p>
+                <h2 class="h4 mb-3">Recent Tasks</h2>
+                <div class="list-group list-group-flush">
+                    {% for item in ai_requests %}
+                        <div class="list-group-item px-0">
+                            <strong>{{ item.get_tool_type_display }}</strong>
+                            <div class="small text-secondary">{{ item.user.username }} - {{ item.get_status_display }}</div>
+                        </div>
+                    {% empty %}
+                        <p class="text-secondary mb-0">No AI activity.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

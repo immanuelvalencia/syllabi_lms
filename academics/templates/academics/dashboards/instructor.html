@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Teacher Dashboard | Syllabi LMS{% endblock %}
+{% block page_title %}Teacher Dashboard{% endblock %}
+
+{% block content %}
+<section class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Courses" value=course_count caption="Active teaching load" %}</div>
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Students" value=student_count caption="Total enrollments" %}</div>
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="To Grade" value=pending_submission_count caption="Pending submissions" %}</div>
+    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="At Risk" value=at_risk_count caption="Below 45% progress" %}</div>
+</section>
+
+<section class="row g-4">
+    <div class="col-12 col-xl-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                    <p class="eyebrow mb-1">Teaching</p>
+                    <h2 class="h4 mb-0">Courses</h2>
+                </div>
+            </div>
+                <div class="row g-3">
+                    {% for course in courses %}
+                        <div class="col-12 col-md-6">{% include "components/course_card.html" with course=course %}</div>
+                    {% empty %}
+                        <div class="col-12"><p class="text-secondary mb-0">No courses assigned.</p></div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <p class="eyebrow mb-1">Assessment</p>
+                <h2 class="h4 mb-3">Pending Grading</h2>
+                <div class="list-group list-group-flush">
+                    {% for submission in pending_submissions %}
+                        <div class="list-group-item px-0">
+                            <strong>{{ submission.student.get_full_name|default:submission.student.username }}</strong>
+                            <div class="small text-secondary">{{ submission.assignment.title }} - {{ submission.assignment.course.code }}</div>
+                        </div>
+                    {% empty %}
+                        <p class="text-secondary mb-0">No pending submissions.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

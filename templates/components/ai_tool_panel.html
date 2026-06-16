@@ -1,0 +1,48 @@
+<section class="card border-0 shadow-sm h-100">
+    <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+        <div>
+            <p class="eyebrow mb-1">AI workspace</p>
+            <h2 class="h4 mb-0">{{ title|default:"Smart tools" }}</h2>
+        </div>
+    </div>
+    <form class="vstack gap-3" action="{% url 'academics:create_ai_tool_request' %}" method="post">
+        {% csrf_token %}
+        {% if course %}
+            <input type="hidden" name="course_public_id" value="{{ course.public_id }}">
+            <input type="hidden" name="next" value="{{ course.get_absolute_url }}">
+        {% endif %}
+        {% if section %}
+            <input type="hidden" name="section_public_id" value="{{ section.public_id }}">
+            <input type="hidden" name="next" value="{{ section.get_absolute_url }}">
+        {% endif %}
+        <label class="form-label mb-0">
+            <span class="d-block fw-semibold mb-1">Tool</span>
+            <select class="form-select" name="tool_type">
+                <option value="study_plan">Study plan</option>
+                <option value="quiz_generator">Quiz generator</option>
+                <option value="lesson_summary">Lesson summary</option>
+                <option value="feedback_assistant">Feedback assistant</option>
+                <option value="risk_insights">Risk insights</option>
+            </select>
+        </label>
+        <label class="form-label mb-0">
+            <span class="d-block fw-semibold mb-1">Context</span>
+            <textarea class="form-control" name="prompt" rows="4" placeholder="Paste lesson notes, class context, or a student question"></textarea>
+        </label>
+        <button class="btn btn-success" type="submit">Queue AI task</button>
+    </form>
+
+    <div class="vstack gap-2 mt-4">
+        {% for item in ai_requests %}
+            <article class="border rounded-3 p-3 bg-success-subtle">
+                <span class="badge text-bg-light border mb-2">{{ item.get_status_display }}</span>
+                <strong class="d-block">{{ item.get_tool_type_display }}</strong>
+                {% if item.result %}<p class="mb-0 text-secondary">{{ item.result|linebreaksbr }}</p>{% endif %}
+            </article>
+        {% empty %}
+            <p class="text-secondary mb-0">No AI requests yet.</p>
+        {% endfor %}
+    </div>
+    </div>
+</section>

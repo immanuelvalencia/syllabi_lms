@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard | Syllabi LMS{% endblock %}
+{% block page_title %}Student Dashboard{% endblock %}
+
+{% block content %}
+<section class="row g-3 mb-4">
+    <div class="col-12 col-md-4">{% include "components/stat_card.html" with label="Courses" value=enrollment_count caption="Current enrollments" %}</div>
+    <div class="col-12 col-md-4">{% include "components/stat_card.html" with label="Progress" value=average_progress_label caption="Average completion" %}</div>
+    <div class="col-12 col-md-4">{% include "components/stat_card.html" with label="Due Soon" value=upcoming_assignment_count caption="Open assignments" %}</div>
+</section>
+
+<section class="row g-4 mb-4">
+    <div id="courses" class="col-12 col-xl-8">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <p class="eyebrow mb-1">Learning</p>
+                <h2 class="h4 mb-3">Continue Courses</h2>
+                <div class="row g-3">
+                    {% for enrollment in enrollments %}
+                        <div class="col-12 col-md-6">
+                            <article class="card border h-100 course-progress">
+                                <div class="card-body">
+                                    <span class="badge text-bg-success-subtle text-success-emphasis">{{ enrollment.course.code }}</span>
+                                    <h3 class="h5 mt-3"><a class="text-decoration-none text-dark" href="{{ enrollment.course.get_absolute_url }}">{{ enrollment.course.title }}</a></h3>
+                                    <p class="text-secondary">{{ enrollment.current_lesson.title|default:"Start the next lesson" }}</p>
+                                    <div class="progress" role="progressbar" aria-label="Course progress" aria-valuenow="{{ enrollment.progress_percent }}" aria-valuemin="0" aria-valuemax="100">
+                                        <div class="progress-bar bg-success" style="width: {{ enrollment.progress_percent }}%"></div>
+                                    </div>
+                                    <small class="text-secondary">{{ enrollment.progress_percent }}% complete</small>
+                                </div>
+                            </article>
+                        </div>
+                    {% empty %}
+                        <div class="col-12"><p class="text-secondary mb-0">No courses assigned yet.</p></div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="assignments" class="col-12 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <p class="eyebrow mb-1">Deadlines</p>
+                <h2 class="h4 mb-3">Upcoming</h2>
+                <div class="list-group list-group-flush">
+                    {% for assignment in upcoming_assignments %}
+                        <div class="list-group-item px-0">
+                            <strong>{{ assignment.title }}</strong>
+                            <div class="small text-secondary">{{ assignment.course.code }}{% if assignment.due_at %} - {{ assignment.due_at|date:"M j, g:i A" }}{% endif %}</div>
+                        </div>
+                    {% empty %}
+                        <p class="text-secondary mb-0">No open deadlines.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="announcements" class="card border-0 shadow-sm">
+    <div class="card-body">
+        <p class="eyebrow mb-1">Updates</p>
+        <h2 class="h4 mb-3">Announcements</h2>
+        <div class="list-group list-group-flush">
+            {% for announcement in announcements %}
+                <div class="list-group-item px-0">
+                    <strong>{{ announcement.title }}</strong>
+                    <div class="small text-secondary">{{ announcement.body|truncatechars:120 }}</div>
+                </div>
+            {% empty %}
+                <p class="text-secondary mb-0">No announcements.</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}

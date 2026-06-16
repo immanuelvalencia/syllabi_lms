@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} | Syllabi LMS{% endblock %}
+{% block page_title %}{{ course.title }}{% endblock %}
+
+{% block content %}
+<section class="card border-0 shadow-sm mb-4">
+    <div class="card-body d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3">
+        <div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge text-bg-success-subtle text-success-emphasis">{{ course.code }}</span>
+                {% if course.school_year %}
+                    <span class="badge text-bg-info-subtle text-info-emphasis">{{ course.school_year }}</span>
+                {% endif %}
+                {% if course.grade_level %}
+                    <span class="badge text-bg-warning-subtle text-warning-emphasis">{{ course.grade_level }}</span>
+                {% endif %}
+            </div>
+            
+            <p class="eyebrow mb-2">Course overview</p>
+            <p class="text-secondary mb-3">{{ course.description|default:"Course description has not been added yet." }}</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if can_manage %}
+                <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#uploadMaterialModal">
+                    <i class="bi bi-upload me-1"></i> Upload file
+                </button>
+                <button class="btn btn-success" type="button" data-bs-toggle="modal" data-bs-target="#createSectionModal">
+                    <i class="bi bi-plus-lg me-1"></i> Create section
+                </button>
+            {% endif %}
+            <a class="btn btn-outline-success" href="{% url 'academics:teacher_courses' %}">Back to courses</a>
+        </div>
+    </div>
+</section>
+
+<section class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-4">
+            <div>
+                <p class="eyebrow mb-1">Sections</p>
+                <h2 class="h4 mb-0">Course Sections</h2>
+            </div>
+        </div>
+        <div class="row g-3">
+            {% for section in course.sections.all %}
+                <div class="col-12 col-xl-6">
+                    <a class="section-card-link" href="{{ section.get_absolute_url }}">
+                        <article class="section-card p-3 p-md-4 h-100">
+                            <div class="section-card__top mb-3">
+                                <div>
+                                    <span class="badge text-bg-success-subtle text-success-emphasis">Section {{ section.order }}</span>
+                                    <h3 class="h5 mt-2 mb-0">{{ section.name }}</h3>
+                                </div>
+                                <span class="badge text-bg-light border">{{ section.section_enrollments.count }} students</span>
+                            </div>
+                            <div class="section-schedule p-3 mb-3">
+                                <div class="small text-secondary">{{ section.schedule_title|default:"Class schedule" }}</div>
+                                <strong>
+                                    {{ section.meeting_days|default:"Days not set" }}
+                                    {% if section.start_time %} - {{ section.start_time|time:"g:i A" }}{% endif %}
+                                    {% if section.end_time %} to {{ section.end_time|time:"g:i A" }}{% endif %}
+                                </strong>
+                                <div class="small text-secondary">{{ section.location|default:"Location not set" }}</div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-secondary small">Open section analytics and tools</span>
+                                <span class="btn btn-outline-success btn-sm">View section</span>
+                            </div>
+                        </article>
+                    </a>
+                </div>
+            {% empty %}
+                <div class="col-12">
+                    <p class="text-secondary mb-0">No sections yet.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="card border-0 shadow-sm mt-4">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-4">
+            <div>
+                <p class="eyebrow mb-1">Materials</p>
+                <h2 class="h4 mb-0">Course Files</h2>
+            </div>
+        </div>
+        <div class="row g-3">
+            {% for material in course.materials.all %}
+                <div class="col-12 col-md-6 col-xl-4">
+                    <article class="card border shadow-sm h-100">
+                        <div class="card-body d-flex flex-column">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h3 class="h6 text-truncate mb-0" title="{{ material.display_name }}">{{ material.display_name }}</h3>
+                                {% if material.material_type == "pdf" %}
+                                    <i class="bi bi-file-earmark-pdf text-danger fs-4"></i>
+                                {% elif material.material_type == "video" %}
+                                    <i class="bi bi-file-earmark-play text-primary fs-4"></i>
+                                {% elif material.material_type == "presentation" %}
+                                    <i class="bi bi-file-earmark-slides text-warning fs-4"></i>
+                                {% elif material.material_type == "image" %}
+                                    <i class="bi bi-file-image text-success fs-4"></i>
+                                {% else %}
+                                    <i class="bi bi-file-earmark text-secondary fs-4"></i>
+                                {% endif %}
+                            </div>
+                            <div class="mb-3 d-flex align-items-center gap-2">
+                                <span class="badge text-bg-light border text-secondary">{{ material.get_category_display }}</span>
+                                <span class="small text-secondary">{{ material.created_at|date:"M j, Y" }}</span>
+                            </div>
+                            <div class="mt-auto d-flex justify-content-between align-items-center">
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-primary btn-sm view-material-btn" data-url="{{ material.file.url }}" data-type="{{ material.material_type }}" data-title="{{ material.display_name }}">View</button>
+                                    <a href="{{ material.file.url }}" download class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i></a>
+                                </div>
+                                {% if can_manage %}
+                                    <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="d-inline" onsubmit="return confirm('Delete this material?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            {% empty %}
+                <div class="col-12">
+                    <p class="text-secondary mb-0">No materials uploaded yet.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+{% if can_manage %}
+<div class="modal fade" id="createSectionModal" tabindex="-1" aria-labelledby="createSectionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create_section">
+                <div class="modal-header">
+                    <div>
+                        <p class="eyebrow mb-1">Setup</p>
+                        <h2 class="modal-title h5" id="createSectionModalLabel">Create Section</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body vstack gap-3">
+                    {{ section_form.non_field_errors }}
+                    
+                    <div>
+                        <label class="form-label fw-semibold" for="{{ section_form.name.id_for_label }}">{{ section_form.name.label }}</label>
+                        {{ section_form.name }}
+                        {% for error in section_form.name.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                    </div>
+                    
+                    <div>
+                        <label class="form-label fw-semibold" for="{{ section_form.schedule_title.id_for_label }}">{{ section_form.schedule_title.label }}</label>
+                        {{ section_form.schedule_title }}
+                        {% for error in section_form.schedule_title.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                    </div>
+
+                    <div>
+                        <label class="form-label fw-semibold">{{ section_form.meeting_days.label }}</label>
+                        <div class="d-flex flex-wrap gap-3 mt-1">
+                            {% for checkbox in section_form.meeting_days %}
+                            <div class="form-check">
+                                {{ checkbox.tag }}
+                                <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+                                    {{ checkbox.choice_label }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% for error in section_form.meeting_days.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label fw-semibold" for="{{ section_form.start_time.id_for_label }}">{{ section_form.start_time.label }}</label>
+                            {{ section_form.start_time }}
+                            {% for error in section_form.start_time.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label fw-semibold" for="{{ section_form.end_time.id_for_label }}">{{ section_form.end_time.label }}</label>
+                            {{ section_form.end_time }}
+                            {% for error in section_form.end_time.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="form-label fw-semibold" for="{{ section_form.location.id_for_label }}">{{ section_form.location.label }}</label>
+                        {{ section_form.location }}
+                        {% for error in section_form.location.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-success" type="submit">Create section</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% if section_form.errors %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const modalElement = document.getElementById("createSectionModal");
+        if (modalElement && window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        }
+    });
+</script>
+{% endif %}
+
+<div class="modal fade" id="uploadMaterialModal" tabindex="-1" aria-labelledby="uploadMaterialModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="upload_material">
+                <div class="modal-header">
+                    <div>
+                        <p class="eyebrow mb-1">Materials</p>
+                        <h2 class="modal-title h5" id="uploadMaterialModalLabel">Upload File</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body vstack gap-3">
+                    {{ material_form.non_field_errors }}
+                    {% for field in material_form %}
+                        <div>
+                            <label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary" type="submit">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% if material_form.errors %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const modalElement = document.getElementById("uploadMaterialModal");
+        if (modalElement && window.bootstrap) {
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        }
+    });
+</script>
+{% endif %}
+
+{% endif %}
+<div class="modal fade" id="materialViewerModal" tabindex="-1" aria-labelledby="materialViewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title" id="materialViewerModalLabel">File Viewer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" id="materialViewerContainer" style="min-height: 60vh; background-color: #f8f9fa;">
+                <!-- Content injected via JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const viewerModal = document.getElementById("materialViewerModal");
+        if (viewerModal) {
+            const viewerContainer = document.getElementById("materialViewerContainer");
+            const viewerTitle = document.getElementById("materialViewerModalLabel");
+            const modalInstance = new bootstrap.Modal(viewerModal);
+            
+            document.querySelectorAll(".view-material-btn").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    const url = btn.getAttribute("data-url");
+                    const type = btn.getAttribute("data-type");
+                    const title = btn.getAttribute("data-title");
+                    
+                    viewerTitle.textContent = title;
+                    viewerContainer.innerHTML = "";
+                    
+                    if (type === "image") {
+                        viewerContainer.innerHTML = `<div class="d-flex justify-content-center align-items-center h-100 p-3"><img src="${url}" class="img-fluid" style="max-height: 80vh;" alt="${title}"></div>`;
+                    } else if (type === "video") {
+                        viewerContainer.innerHTML = `<video controls class="w-100" style="max-height: 80vh;"><source src="${url}"></video>`;
+                    } else if (type === "pdf") {
+                        viewerContainer.innerHTML = `<iframe src="${url}" class="w-100 border-0" style="height: 80vh;"></iframe>`;
+                    } else {
+                        viewerContainer.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center h-100 p-5 text-center">
+                            <i class="bi bi-file-earmark-text display-1 text-secondary mb-3"></i>
+                            <p class="fs-5">This file type cannot be previewed directly in the browser.</p>
+                            <a href="${url}" download class="btn btn-primary mt-3"><i class="bi bi-download me-1"></i>Download File</a>
+                        </div>`;
+                    }
+                    
+                    modalInstance.show();
+                });
+            });
+            
+            // Stop video playing when modal closes
+            viewerModal.addEventListener('hidden.bs.modal', () => {
+                viewerContainer.innerHTML = "";
+            });
+        }
+    });
+</script>
+{% endblock %}
