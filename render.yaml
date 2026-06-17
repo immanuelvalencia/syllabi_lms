@@ -10,6 +10,16 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        value: "syllabi-media"
+      - key: AWS_S3_REGION_NAME
+        value: "auto"
+      - key: AWS_S3_ENDPOINT_URL
+        value: "https://rmootwcefmxlxfkomubz.supabase.co/storage/v1/s3"
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_HOSTS
@@ -36,6 +46,16 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        value: "syllabi-media"
+      - key: AWS_S3_REGION_NAME
+        value: "auto"
+      - key: AWS_S3_ENDPOINT_URL
+        value: "https://rmootwcefmxlxfkomubz.supabase.co/storage/v1/s3"
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_HOSTS
