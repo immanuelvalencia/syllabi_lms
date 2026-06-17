@@ -16,5 +16,8 @@ urlpatterns = [
     path("courses/<slug:slug>/analytics.pdf", views.course_analytics_pdf, name="course_analytics_pdf"),
     path("courses/<slug:slug>/sections/<int:section_id>/", views.section_detail, name="section_detail"),
     path("materials/<int:material_id>/delete/", views.delete_course_material, name="delete_course_material"),
+    path("materials/<int:material_id>/analyze/", views.analyze_material, name="analyze_material"),
     path("ai-tools/request/", views.create_ai_tool_request, name="create_ai_tool_request"),
+    path("ai-tasks/", views.ai_tasks_list, name="ai_tasks_list"),
+    path("courses/<slug:slug>/ai-generate/", views.ai_generate, name="ai_generate"),
 ]

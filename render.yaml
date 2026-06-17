@@ -1,70 +1,58 @@
 services:
+  # The main Django web server
   - type: web
-    name: syllabi-lms-web
-    runtime: docker
-    plan: starter
-    preDeployCommand: python manage.py migrate
-    dockerCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    name: syllabi-web
+    env: docker
+    plan: free
+    dockerCommand: sh -c "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --threads 2"
     envVars:
-      - key: DEBUG
-        value: "False"
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_HOSTS
-        sync: false
-      - key: CSRF_TRUSTED_ORIGINS
-        sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: syllabi-lms-db
-          property: connectionString
+        value: "*"
       - key: CELERY_BROKER_URL
         fromService:
-          type: keyvalue
-          name: syllabi-lms-redis
+          type: redis
+          name: syllabi-redis
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
-          type: keyvalue
-          name: syllabi-lms-redis
+          type: redis
+          name: syllabi-redis
           property: connectionString
 
+  # The Celery background worker
   - type: worker
-    name: syllabi-lms-worker
-    runtime: docker
-    plan: starter
+    name: syllabi-worker
+    env: docker
+    plan: free
     dockerCommand: celery -A config worker --loglevel=info --concurrency=2
     envVars:
-      - key: DEBUG
-        value: "False"
-      - key: SECRET_KEY
-        fromService:
-          type: web
-          name: syllabi-lms-web
-          envVarKey: SECRET_KEY
-      - key: ALLOWED_HOSTS
-        value: ".onrender.com"
       - key: DATABASE_URL
-        fromDatabase:
-          name: syllabi-lms-db
-          property: connectionString
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: "*"
       - key: CELERY_BROKER_URL
         fromService:
-          type: keyvalue
-          name: syllabi-lms-redis
+          type: redis
+          name: syllabi-redis
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
-          type: keyvalue
-          name: syllabi-lms-redis
+          type: redis
+          name: syllabi-redis
           property: connectionString
 
-  - type: keyvalue
-    name: syllabi-lms-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList: []
-
-databases:
-  - name: syllabi-lms-db
-    plan: starter
+  # The internal Redis message broker
+  - type: redis
+    name: syllabi-redis
+    plan: free
+    ipAllowList: [] # Strict internal networking only

@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.utils.text import slugify
-
+from pgvector.django import VectorField
 def generate_short_id():
     return get_random_string(10)
 
@@ -226,6 +226,7 @@ class AiToolRequest(models.Model):
         LESSON_SUMMARY = "lesson_summary", "Lesson Summary"
         FEEDBACK_ASSISTANT = "feedback_assistant", "Feedback Assistant"
         RISK_INSIGHTS = "risk_insights", "Risk Insights"
+        DOCUMENT_ANALYSIS = "document_analysis", "Document Analysis"
 
     class Status(models.TextChoices):
         QUEUED = "queued", "Queued"
@@ -266,6 +267,7 @@ class CourseMaterial(models.Model):
     file = models.FileField(upload_to="course_materials/")
     title = models.CharField(max_length=180, blank=True)
     category = models.CharField(max_length=50, choices=CategoryChoices.choices, default=CategoryChoices.OTHER)
+    is_processed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -282,7 +284,14 @@ class CourseMaterial(models.Model):
         return os.path.basename(self.file.name)
 
     @property
+    def display_extension(self):
+        import os
+        _, ext = os.path.splitext(self.file.name)
+        return ext.lstrip('.').upper()
+
+    @property
     def file_extension(self):
+        import os
         name, extension = os.path.splitext(self.file.name)
         return extension.lower()
 
@@ -298,3 +307,16 @@ class CourseMaterial(models.Model):
         elif ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
             return "image"
         return "document"
+
+class DocumentChunk(models.Model):
+    material = models.ForeignKey(CourseMaterial, on_delete=models.CASCADE, related_name="chunks")
+    content = models.TextField()
+    embedding = VectorField(dimensions=3072)  # gemini-embedding-2 dimension size
+    chunk_index = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["chunk_index"]
+
+    def __str__(self):
+        return f"Chunk {self.chunk_index} for {self.material.title or self.material.file.name}"

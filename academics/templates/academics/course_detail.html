@@ -301,7 +301,7 @@
                             <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ material.get_category_display }}</span>
                             <span class="text-xs text-gray-500">{{ material.created_at|date:"M j, Y" }}</span>
                         </div>
-                        <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
+                        <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100 flex-wrap gap-2">
                             <div class="flex gap-2">
                                 <button @click="viewerModalOpen = true; viewerUrl = '{{ material.file.url }}'; viewerType = '{{ material.material_type }}'; viewerTitle = '{{ material.display_name }}'" type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-semibold text-green-600 hover:bg-green-100">
                                     View
@@ -309,14 +309,30 @@
                                 <a href="{{ material.file.url }}" download class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                                     <i class="bi bi-download"></i>
                                 </a>
+                                {% if can_manage %}
+                                    <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="inline-block" onsubmit="return confirm('Delete this material?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
                             </div>
                             {% if can_manage %}
-                                <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="inline-block" onsubmit="return confirm('Delete this material?');">
-                                    {% csrf_token %}
-                                    <button type="submit" class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </form>
+                                <div class="flex items-center">
+                                    {% if not material.is_processed %}
+                                    <form action="{% url 'academics:analyze_material' material.id %}" method="post" class="inline-block">
+                                        {% csrf_token %}
+                                        <button type="submit" class="inline-flex items-center gap-x-1.5 rounded-md bg-indigo-50 px-2.5 py-1.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-100 shadow-sm ring-1 ring-inset ring-indigo-200">
+                                            <i class="bi bi-magic"></i> Analyze
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-50 px-2.5 py-1.5 text-sm font-medium text-gray-500 ring-1 ring-inset ring-gray-200">
+                                        <i class="bi bi-check-circle-fill text-green-500"></i> Analyzed
+                                    </span>
+                                    {% endif %}
+                                </div>
                             {% endif %}
                         </div>
                     </div>

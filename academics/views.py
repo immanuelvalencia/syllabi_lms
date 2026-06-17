@@ -8,6 +8,7 @@ from django.db.models import Avg, Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from .tasks import process_material_rag
 
 from .forms import CourseForm, CourseSectionForm, SectionEnrollmentForm, CourseMaterialForm
 from .models import (
@@ -467,6 +468,27 @@ def delete_course_material(request, material_id):
         return redirect(course.get_absolute_url())
     return redirect("academics:dashboard")
 
+@login_required
+def analyze_material(request, material_id):
+    if request.method == "POST":
+        material = get_object_or_404(CourseMaterial, id=material_id)
+        course = material.course
+        if not _can_manage_course(request.user, course):
+            raise PermissionDenied
+            
+        from .models import AiToolRequest
+        ai_request = AiToolRequest.objects.create(
+            user=request.user,
+            tool_type=AiToolRequest.ToolType.DOCUMENT_ANALYSIS,
+            prompt=f"Extract and index knowledge from document: {material.display_name}",
+        )
+        from .tasks import process_material_rag
+        process_material_rag.delay(material.id, ai_request.id)
+        messages.success(request, f"Started analyzing '{material.display_name}'. This may take a moment.")
+            
+        return redirect(course.get_absolute_url())
+    return redirect("academics:dashboard")
+
 
 @login_required
 def section_detail(request, slug, section_id):
@@ -591,3 +613,31 @@ def create_ai_tool_request(request):
         messages.error(request, "The AI worker is not available yet.")
 
     return redirect(redirect_to)
+
+import json
+from django.http import JsonResponse
+from .services import generate_rag_response
+
+@login_required
+def ai_generate(request, slug):
+    course = get_object_or_404(Course, public_id=slug)
+    
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            prompt = data.get("prompt")
+            if not prompt:
+                return JsonResponse({"error": "Prompt is required"}, status=400)
+                
+            response_text = generate_rag_response(course.id, prompt)
+            return JsonResponse({"response": response_text})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+            
+    return JsonResponse({"error": "Invalid method"}, status=405)
+
+@login_required
+def ai_tasks_list(request):
+    tasks = request.user.ai_tool_requests.all()
+    profile = request.user.profile if hasattr(request.user, "profile") else None
+    return render(request, "academics/ai_tasks_list.html", {"tasks": tasks, "profile": profile})
