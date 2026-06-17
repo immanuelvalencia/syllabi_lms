@@ -26,11 +26,11 @@ class CourseForm(forms.ModelForm):
             year_choices.append((f"{year}-{year+1}", f"{year}-{year+1}"))
             
         self.fields["school_year"] = forms.ChoiceField(choices=year_choices, required=False)
-        self.fields["school_year"].widget.attrs.setdefault("class", "form-select")
+        self.fields["school_year"].widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:max-w-xs sm:text-sm sm:leading-6")
         
         for field_name, field in self.fields.items():
             if field_name != "school_year":
-                field.widget.attrs.setdefault("class", "form-control")
+                field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
 
 
 class CourseSectionForm(forms.ModelForm):
@@ -46,14 +46,14 @@ class CourseSectionForm(forms.ModelForm):
     
     meeting_days = forms.MultipleChoiceField(
         choices=DAYS_CHOICES,
-        widget=forms.CheckboxSelectMultiple,
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600"}),
         required=False,
         label="Meeting Days"
     )
 
     class Meta:
         model = CourseSection
-        fields = ["name", "schedule_title", "meeting_days", "start_time", "end_time", "location"]
+        fields = ["name", "meeting_days", "start_time", "end_time", "location"]
         widgets = {
             "start_time": forms.TimeInput(attrs={"type": "time"}),
             "end_time": forms.TimeInput(attrs={"type": "time"}),
@@ -72,7 +72,7 @@ class CourseSectionForm(forms.ModelForm):
             
         for field_name, field in self.fields.items():
             if field_name != "meeting_days":
-                field.widget.attrs.setdefault("class", "form-control")
+                field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
 
 
 class SectionEnrollmentForm(forms.Form):
@@ -85,7 +85,7 @@ class SectionEnrollmentForm(forms.Form):
             profile__role=Profile.Role.STUDENT,
             is_active=True,
         ).order_by("first_name", "last_name", "username")
-        self.fields["student"].widget.attrs.setdefault("class", "form-select")
+        self.fields["student"].widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
 
 class CourseMaterialForm(forms.ModelForm):
     class Meta:
@@ -94,5 +94,8 @@ class CourseMaterialForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            field.widget.attrs.setdefault("class", "form-control")
+        for field_name, field in self.fields.items():
+            if field_name == "file":
+                field.widget.attrs.setdefault("class", "block w-full text-sm text-gray-900 border border-gray-300 rounded-md cursor-pointer bg-gray-50 focus:outline-none")
+            else:
+                field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")

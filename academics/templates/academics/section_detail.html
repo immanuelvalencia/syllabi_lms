@@ -1,58 +1,107 @@
 {% extends "base.html" %}
 
 {% block title %}{{ section.name }} | {{ course.title }}{% endblock %}
-{% block page_title %}{{ section.name }}{% endblock %}
+{% block page_header %}
+<div class="mb-4">
+    <a href="{{ course.get_absolute_url }}" class="text-sm font-medium text-gray-500 hover:text-gray-700 flex items-center gap-2 w-fit">
+        <i class="bi bi-arrow-left"></i> Back to {{ course.title }}
+    </a>
+</div>
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+        <p class="text-sm font-semibold leading-6 text-green-600 uppercase tracking-widest">{{ course.code }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{{ section.name }}</h1>
+        <p class="mt-3 text-sm text-gray-600 flex items-center gap-2">
+            <i class="bi bi-calendar3"></i>
+            {{ section.meeting_days|default:"Days not set" }}
+            {% if section.start_time %} {{ section.start_time|time:"g:i A" }}{% endif %}
+            {% if section.end_time %} to {{ section.end_time|time:"g:i A" }}{% endif %}
+        </p>
+    </div>
+</div>
+{% endblock %}
 
 {% block content %}
-<div class="section-layout">
-    <main>
-        <section class="card border-0 shadow-sm mb-4">
-            <div class="card-body">
-                <div class="d-flex flex-column flex-xl-row justify-content-between gap-3">
-                    <div>
-                        <p class="eyebrow mb-1">{{ course.code }}</p>
-                        <h2 class="h3 fw-bold mb-2">{{ section.name }}</h2>
-                        <p class="text-secondary mb-0">
-                            {{ section.schedule_title|default:"Class schedule" }} -
-                            {{ section.meeting_days|default:"Days not set" }}
-                            {% if section.start_time %} {{ section.start_time|time:"g:i A" }}{% endif %}
-                            {% if section.end_time %} to {{ section.end_time|time:"g:i A" }}{% endif %}
-                        </p>
-                    </div>
-                    <a class="btn btn-outline-success align-self-start" href="{{ course.get_absolute_url }}">Back to sections</a>
-                </div>
-            </div>
+<div x-data="{ editModalOpen: {% if section_form.errors %}true{% else %}false{% endif %}, deleteModalOpen: false }" class="flex flex-col lg:flex-row gap-8">
+    <main class="flex-1 min-w-0">
+        <!-- Header moved to page_header block -->
+
+        <section id="analytics" class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+            <div>{% include "components/stat_card.html" with label="Students" value=student_count caption="Section enrollment" %}</div>
+            <div>{% include "components/stat_card.html" with label="Course Students" value=course_student_count caption="All sections" %}</div>
+            <div>{% include "components/stat_card.html" with label="Engagement" value=completion_score|stringformat:"s"|add:"%" caption="Estimated activity" %}</div>
         </section>
 
-        <section id="analytics" class="row g-3 mb-4">
-            <div class="col-12 col-md-4">
-                {% include "components/stat_card.html" with label="Students" value=student_count caption="Section enrollment" %}
-            </div>
-            <div class="col-12 col-md-4">
-                {% include "components/stat_card.html" with label="Course Students" value=course_student_count caption="All sections" %}
-            </div>
-            <div class="col-12 col-md-4">
-                {% include "components/stat_card.html" with label="Engagement" value=completion_score|stringformat:"s"|add:"%" caption="Estimated activity" %}
-            </div>
-        </section>
+        <section id="announcements" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+            <div class="p-6 sm:p-8">
+                <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Announcements</h2>
 
-        <section id="students" class="card border-0 shadow-sm mb-4">
-            <div class="card-body">
-                <p class="eyebrow mb-1">Roster</p>
-                <h2 class="h4 mb-3">Students</h2>
-                <div class="list-group list-group-flush">
-                    {% for enrollment in section.section_enrollments.all %}
-                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center gap-3">
-                            <div>
-                                <strong>{{ enrollment.student.get_full_name|default:enrollment.student.username }}</strong>
-                                <div class="small text-secondary">{{ enrollment.student.email|default:"No email" }}</div>
+                <ul role="list" class="divide-y divide-gray-100">
+                    {% for announcement in section_announcements %}
+                        <li class="py-4">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="min-w-0">
+                                    <p class="text-sm font-semibold leading-6 text-gray-900">{{ announcement.title }}</p>
+                                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ announcement.body|truncatewords:28 }}</p>
+                                </div>
+                                <p class="shrink-0 text-xs text-gray-500">{{ announcement.created_at|date:"M j" }}</p>
                             </div>
-                            <span class="badge text-bg-success-subtle text-success-emphasis">Active</span>
-                        </div>
+                        </li>
                     {% empty %}
-                        <p class="text-secondary mb-0">No students enrolled in this section yet.</p>
+                        <li class="py-4"><p class="text-gray-500 italic">No announcements for this section yet.</p></li>
                     {% endfor %}
-                </div>
+                </ul>
+            </div>
+        </section>
+
+        <section id="grading" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+            <div class="p-6 sm:p-8">
+                <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Grading</h2>
+
+                <ul role="list" class="divide-y divide-gray-100">
+                    {% for submission in pending_submissions %}
+                        <li class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="min-w-0">
+                                <p class="text-sm font-semibold leading-6 text-gray-900">{{ submission.assignment.title }}</p>
+                                <p class="mt-1 text-xs leading-5 text-gray-500">
+                                    {{ submission.student.get_full_name|default:submission.student.username }} submitted {{ submission.submitted_at|date:"M j, Y" }}
+                                </p>
+                            </div>
+                            <a href="/admin/academics/submission/{{ submission.id }}/change/" class="inline-flex w-fit items-center gap-x-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                <i class="bi bi-clipboard-check text-gray-400"></i> Review
+                            </a>
+                        </li>
+                    {% empty %}
+                        <li class="py-4"><p class="text-gray-500 italic">No ungraded submissions for this section.</p></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+
+        <section id="students" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+            <div class="p-6 sm:p-8">
+                <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Students</h2>
+                
+                <ul role="list" class="divide-y divide-gray-100">
+                    {% for enrollment in section.section_enrollments.all %}
+                        <li class="py-4 flex justify-between items-center gap-x-6">
+                            <div class="flex gap-x-4">
+                                <div class="h-10 w-10 flex-none rounded-full bg-green-100 flex items-center justify-center">
+                                    <i class="bi bi-person text-green-600 text-lg"></i>
+                                </div>
+                                <div class="min-w-0 flex-auto">
+                                    <p class="text-sm font-semibold leading-6 text-gray-900">{{ enrollment.student.get_full_name|default:enrollment.student.username }}</p>
+                                    <p class="mt-1 truncate text-xs leading-5 text-gray-500">{{ enrollment.student.email|default:"No email" }}</p>
+                                </div>
+                            </div>
+                            <div class="hidden sm:flex sm:flex-col sm:items-end">
+                                <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Active</span>
+                            </div>
+                        </li>
+                    {% empty %}
+                        <li class="py-4"><p class="text-gray-500 italic">No students enrolled in this section yet.</p></li>
+                    {% endfor %}
+                </ul>
             </div>
         </section>
 
@@ -61,23 +110,144 @@
         </section>
     </main>
 
-    <aside class="section-side-nav card border-0 shadow-sm">
-        <div class="card-body">
-            <p class="eyebrow mb-2">Section Navigation</p>
-            <nav class="nav flex-column">
-                <a class="nav-link active" href="#analytics"><i class="bi bi-bar-chart me-2"></i>Section Analytics</a>
-                <a class="nav-link" href="#students"><i class="bi bi-people me-2"></i>Students</a>
-                <a class="nav-link" href="#ai-tools"><i class="bi bi-robot me-2"></i>AI Tools</a>
-                <a class="nav-link" href="{{ course.get_absolute_url }}"><i class="bi bi-list-task me-2"></i>All Sections</a>
-                <a class="nav-link" href="{% url 'academics:teacher_courses' %}"><i class="bi bi-journal-bookmark me-2"></i>All Courses</a>
-            </nav>
-            <hr>
-            <div class="vstack gap-2">
-                <button class="btn btn-light border text-start" type="button"><i class="bi bi-broadcast me-2"></i>View Stream</button>
-                <button class="btn btn-light border text-start" type="button"><i class="bi bi-calendar3 me-2"></i>Calendar</button>
-                <button class="btn btn-light border text-start" type="button"><i class="bi bi-bell me-2"></i>Notifications</button>
+    <aside class="w-full lg:w-72 shrink-0">
+        <div class="sticky top-8 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+            <div class="p-6">
+                <nav class="flex flex-col gap-1">
+                    <a href="#announcements" class="group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-green-600 bg-green-50"><i class="bi bi-megaphone text-green-600 text-lg shrink-0"></i> Announcements</a>
+                    <a href="#grading" class="group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 hover:text-green-600 hover:bg-gray-50"><i class="bi bi-clipboard-check text-gray-400 group-hover:text-green-600 text-lg shrink-0"></i> Grading</a>
+                    <a href="#students" class="group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 hover:text-green-600 hover:bg-gray-50"><i class="bi bi-people text-gray-400 group-hover:text-green-600 text-lg shrink-0"></i> Students</a>
+                    {% if can_manage %}
+                    <button type="button" @click="editModalOpen = true" class="group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 hover:text-green-600 hover:bg-gray-50 text-left w-full">
+                        <i class="bi bi-gear text-gray-400 group-hover:text-green-600 text-lg shrink-0"></i> Manage Section
+                    </button>
+                    {% endif %}
+                </nav>
             </div>
         </div>
     </aside>
+
+<!-- Main content container closes after modals -->
+
+{% if can_manage %}
+<!-- Edit Section Modal -->
+<div x-show="editModalOpen" x-cloak @open-edit-modal.window="editModalOpen = true" class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <div x-show="editModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+  <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+      <div x-show="editModalOpen" @click.away="editModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6 text-gray-900">
+        <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+          <button type="button" @click="editModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+            <span class="sr-only">Close</span>
+            <i class="bi bi-x text-2xl"></i>
+          </button>
+        </div>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="edit_section">
+            <div>
+                <h3 class="text-xl font-bold leading-6 text-gray-900 mb-6" id="modal-title">Edit Section</h3>
+                <div class="mt-2 space-y-4">
+                    {% if section_form.non_field_errors %}
+                        <div class="rounded-md bg-red-50 p-4 border border-red-200">
+                            <div class="text-sm text-red-700">{{ section_form.non_field_errors }}</div>
+                        </div>
+                    {% endif %}
+                    
+                    <div>
+                        <label for="{{ section_form.name.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.name.label }}</label>
+                        <div class="mt-1">{{ section_form.name }}</div>
+                        {% for error in section_form.name.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">{{ section_form.meeting_days.label }}</label>
+                        <div class="flex flex-wrap gap-4">
+                            {% for checkbox in section_form.meeting_days %}
+                            <div class="flex items-center">
+                                {{ checkbox.tag }}
+                                <label for="{{ checkbox.id_for_label }}" class="ml-2 text-sm text-gray-900">{{ checkbox.choice_label }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% for error in section_form.meeting_days.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="{{ section_form.start_time.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.start_time.label }}</label>
+                            <div class="mt-1">{{ section_form.start_time }}</div>
+                            {% for error in section_form.start_time.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                        </div>
+                        <div>
+                            <label for="{{ section_form.end_time.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.end_time.label }}</label>
+                            <div class="mt-1">{{ section_form.end_time }}</div>
+                            {% for error in section_form.end_time.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="{{ section_form.location.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.location.label }}</label>
+                        <div class="mt-1">{{ section_form.location }}</div>
+                        {% for error in section_form.location.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-6 pt-4 border-t border-gray-100 flex flex-col gap-4">
+                <div class="flex items-center justify-end gap-x-4">
+                    <button type="button" @click="editModalOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                    <button type="submit" class="inline-flex justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">Save changes</button>
+                </div>
+                
+                <div class="rounded-md bg-red-50 p-4 border border-red-200 flex justify-between items-center mt-4">
+                    <div>
+                        <h4 class="text-sm font-medium text-red-800">Danger Zone</h4>
+                        <p class="text-xs text-red-700 mt-1">Deleting this section cannot be undone.</p>
+                    </div>
+                    <button type="button" @click="editModalOpen = false; deleteModalOpen = true" class="inline-flex justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500">Delete Section</button>
+                </div>
+            </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div x-show="deleteModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <div x-show="deleteModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+  <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+      <div x-show="deleteModalOpen" @click.away="deleteModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-md sm:p-6 text-gray-900">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_section">
+            <div class="flex items-center gap-x-3 mb-4">
+                <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <i class="bi bi-exclamation-triangle text-red-600 text-lg"></i>
+                </div>
+                <h3 class="text-xl font-bold leading-6 text-gray-900" id="modal-title">Delete Section</h3>
+            </div>
+            
+            <div class="mt-2">
+                <p class="text-sm text-gray-600 mb-4">Are you sure you want to delete this section? All of its data will be permanently removed. This action cannot be undone.</p>
+                
+                <div class="rounded-md bg-gray-50 p-4 border border-gray-200">
+                    <label for="confirm_course_code" class="block text-sm font-medium leading-6 text-gray-900 mb-2">Type <strong class="text-red-600">{{ course.code }}</strong> to confirm:</label>
+                    <input type="text" name="confirm_course_code" id="confirm_course_code" required class="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 sm:text-sm sm:leading-6">
+                </div>
+            </div>
+            
+            <div class="mt-6 flex items-center justify-end gap-x-4">
+                <button type="button" @click="deleteModalOpen = false; editModalOpen = true" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                <button type="submit" class="inline-flex justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500">Delete Permanently</button>
+            </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 </div>
 {% endblock %}

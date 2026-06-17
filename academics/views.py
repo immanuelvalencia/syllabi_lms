@@ -1,8 +1,11 @@
+from io import BytesIO
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Avg, Count, Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -38,6 +41,86 @@ def _can_view_course(user, course):
     if _can_manage_course(user, course):
         return True
     return Enrollment.objects.filter(student=user, course=course).exists()
+
+
+def _build_course_analytics(course, user, section_ids=None):
+    assignments = list(course.assignments.all())
+    assignment_count = len(assignments)
+    submissions = Submission.objects.select_related("assignment").filter(assignment__course=course)
+    submissions_by_student = {}
+    for submission in submissions:
+        submissions_by_student.setdefault(submission.student_id, []).append(submission)
+
+    ai_section_counts = {}
+    section_ai_requests = AiToolRequest.objects.filter(
+        user=user,
+        metadata__course_public_id=str(course.public_id),
+        metadata__section_public_id__isnull=False,
+    ).values("metadata__section_public_id").annotate(total=Count("id"))
+    for item in section_ai_requests:
+        ai_section_counts[item["metadata__section_public_id"]] = item["total"]
+
+    sections = list(course.sections.all())
+    if section_ids is not None:
+        selected_ids = set(section_ids)
+        sections = [section for section in sections if section.id in selected_ids]
+
+    analytics_rows = []
+    for section in sections:
+        student_ids = [enrollment.student_id for enrollment in section.section_enrollments.all()]
+        section_submissions = [
+            submission
+            for student_id in student_ids
+            for submission in submissions_by_student.get(student_id, [])
+        ]
+        submitted_count = len(section_submissions)
+        graded_count = sum(1 for submission in section_submissions if submission.score is not None)
+        expected_count = len(student_ids) * assignment_count
+        scored_percentages = [
+            float(submission.score) / submission.assignment.max_score * 100
+            for submission in section_submissions
+            if submission.score is not None and submission.assignment.max_score
+        ]
+        submission_rate = round(submitted_count / expected_count * 100) if expected_count else 0
+        grading_rate = round(graded_count / submitted_count * 100) if submitted_count else 0
+        average_score = round(sum(scored_percentages) / len(scored_percentages)) if scored_percentages else None
+        attention = []
+        if not student_ids:
+            attention.append("No students enrolled")
+        elif expected_count and submission_rate < 70:
+            attention.append("Low submission rate")
+        if submitted_count > graded_count:
+            attention.append(f"{submitted_count - graded_count} ungraded")
+        if average_score is not None and average_score < 75:
+            attention.append("Score trend below 75%")
+
+        analytics_rows.append({
+            "section": section,
+            "student_count": len(student_ids),
+            "submitted_count": submitted_count,
+            "expected_count": expected_count,
+            "submission_rate": submission_rate,
+            "graded_count": graded_count,
+            "grading_rate": grading_rate,
+            "average_score": average_score,
+            "ai_count": ai_section_counts.get(str(section.public_id), 0),
+            "attention": attention,
+        })
+
+    sections_with_students = [row for row in analytics_rows if row["student_count"]]
+    return {
+        "assignment_count": assignment_count,
+        "section_count": len(analytics_rows),
+        "total_students": sum(row["student_count"] for row in analytics_rows),
+        "total_submissions": sum(row["submitted_count"] for row in analytics_rows),
+        "needs_attention_count": sum(1 for row in analytics_rows if row["attention"]),
+        "top_section": max(
+            sections_with_students,
+            key=lambda row: (row["submission_rate"], row["average_score"] or 0),
+            default=None,
+        ),
+        "rows": analytics_rows,
+    }
 
 
 @login_required
@@ -189,16 +272,37 @@ def course_detail(request, slug):
 
     profile = _profile_for(request.user)
     can_manage = _can_manage_course(request.user, course)
+    course_form = CourseForm(instance=course)
     section_form = CourseSectionForm()
     enrollment_form = SectionEnrollmentForm()
     material_form = CourseMaterialForm()
+    manage_course_modal_open = False
 
     if request.method == "POST":
         if not can_manage:
             raise PermissionDenied
 
         action = request.POST.get("action")
-        if action == "create_section":
+        if action == "edit_course":
+            course_form = CourseForm(request.POST, instance=course)
+            if course_form.is_valid():
+                course = course_form.save()
+                messages.success(request, "Course updated.")
+                return redirect(course.get_absolute_url())
+            manage_course_modal_open = True
+        elif action == "delete_course":
+            confirm_code = request.POST.get("confirm_course_code", "")
+            if confirm_code != course.code:
+                messages.error(request, "Enter the course code exactly to delete this course.")
+                manage_course_modal_open = True
+            else:
+                for material in course.materials.all():
+                    if material.file:
+                        material.file.delete(save=False)
+                course.delete()
+                messages.success(request, "Course deleted.")
+                return redirect("academics:teacher_courses")
+        elif action == "create_section":
             section_form = CourseSectionForm(request.POST)
             if section_form.is_valid():
                 section = section_form.save(commit=False)
@@ -229,16 +333,122 @@ def course_detail(request, slug):
         user=request.user,
         metadata__course_public_id=str(course.public_id),
     )[:5]
+    course_analytics = _build_course_analytics(course, request.user)
     context = {
         "course": course,
         "profile": profile,
         "can_manage": can_manage,
+        "course_analytics": course_analytics,
+        "course_form": course_form,
         "section_form": section_form,
         "enrollment_form": enrollment_form,
         "material_form": material_form,
+        "manage_course_modal_open": manage_course_modal_open,
         "ai_requests": ai_requests,
     }
     return render(request, "academics/course_detail.html", context)
+
+
+@login_required
+def course_analytics_pdf(request, slug):
+    course = get_object_or_404(
+        Course.objects.select_related("instructor").prefetch_related(
+            "assignments",
+            "sections__section_enrollments__student",
+        ),
+        slug__iexact=slug,
+    )
+    if not _can_view_course(request.user, course):
+        raise PermissionDenied
+
+    section_ids = None
+    sections_param = request.GET.get("sections", "")
+    if sections_param:
+        section_ids = []
+        for value in sections_param.split(","):
+            try:
+                section_ids.append(int(value))
+            except ValueError:
+                continue
+
+    analytics = _build_course_analytics(course, request.user, section_ids=section_ids)
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=0.45 * inch,
+        leftMargin=0.45 * inch,
+        topMargin=0.45 * inch,
+        bottomMargin=0.45 * inch,
+    )
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph(f"{course.title} - Course Analytics", styles["Title"]),
+        Paragraph(f"Course code: {course.code}", styles["Normal"]),
+        Spacer(1, 0.18 * inch),
+        Paragraph(
+            f"Sections: {analytics['section_count']} | Students: {analytics['total_students']} | "
+            f"Assignments: {analytics['assignment_count']} | Needs attention: {analytics['needs_attention_count']}",
+            styles["Normal"],
+        ),
+        Spacer(1, 0.22 * inch),
+    ]
+
+    table_data = [[
+        "Section",
+        "Students",
+        "Submissions",
+        "Submission %",
+        "Grading %",
+        "Avg score",
+        "AI use",
+        "Teacher cue",
+    ]]
+    for row in analytics["rows"]:
+        table_data.append([
+            row["section"].name,
+            str(row["student_count"]),
+            f"{row['submitted_count']}/{row['expected_count']}",
+            f"{row['submission_rate']}%",
+            f"{row['grading_rate']}%",
+            f"{row['average_score']}%" if row["average_score"] is not None else "No scores",
+            str(row["ai_count"]),
+            ", ".join(row["attention"]) if row["attention"] else "On track",
+        ])
+
+    if len(table_data) == 1:
+        story.append(Paragraph("No sections selected for this export.", styles["Normal"]))
+    else:
+        table = Table(
+            table_data,
+            repeatRows=1,
+            colWidths=[1.7 * inch, 0.7 * inch, 1.0 * inch, 1.0 * inch, 0.9 * inch, 0.8 * inch, 0.65 * inch, 2.2 * inch],
+        )
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ecfdf5")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#14532d")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d1d5db")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(table)
+
+    doc.build(story)
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{course.slug or course.code}-analytics.pdf"'
+    return response
+
 
 @login_required
 def delete_course_material(request, material_id):
@@ -274,8 +484,43 @@ def section_detail(request, slug, section_id):
     )
     profile = _profile_for(request.user)
     can_manage = _can_manage_course(request.user, course)
+    
+    if request.method == "POST":
+        if not can_manage:
+            raise PermissionDenied
+        
+        action = request.POST.get("action")
+        if action == "edit_section":
+            section_form = CourseSectionForm(request.POST, instance=section)
+            if section_form.is_valid():
+                section_form.save()
+                messages.success(request, f"Section {section.name} updated.")
+                return redirect(section.get_absolute_url())
+        elif action == "delete_section":
+            confirm_code = request.POST.get("confirm_course_code")
+            if confirm_code == course.code:
+                section.delete()
+                messages.success(request, "Section deleted successfully.")
+                return redirect(course.get_absolute_url())
+            else:
+                messages.error(request, "Course code did not match. Section not deleted.")
+                return redirect(section.get_absolute_url())
+    else:
+        section_form = CourseSectionForm(instance=section)
+
     student_count = section.section_enrollments.count()
+    student_ids = list(section.section_enrollments.values_list("student_id", flat=True))
     course_student_count = Enrollment.objects.filter(course=course).count()
+    pending_submissions = Submission.objects.none()
+    if can_manage:
+        pending_submissions = Submission.objects.filter(
+            assignment__course=course,
+            student_id__in=student_ids,
+            score__isnull=True,
+        ).select_related("student", "assignment")[:8]
+    section_announcements = Announcement.objects.filter(
+        Q(audience_all=True) | Q(course=course)
+    ).select_related("author", "course")[:5]
     ai_requests = AiToolRequest.objects.filter(
         user=request.user,
         metadata__course_public_id=str(course.public_id),
@@ -291,7 +536,10 @@ def section_detail(request, slug, section_id):
         "student_count": student_count,
         "course_student_count": course_student_count,
         "completion_score": completion_score,
+        "pending_submissions": pending_submissions,
+        "section_announcements": section_announcements,
         "ai_requests": ai_requests,
+        "section_form": section_form,
     }
     return render(request, "academics/section_detail.html", context)
 

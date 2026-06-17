@@ -3,131 +3,327 @@
 {% block title %}{{ course.title }} | Syllabi LMS{% endblock %}
 {% block page_title %}{{ course.title }}{% endblock %}
 
+{% block page_header %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold leading-6 text-green-600 uppercase tracking-widest">{{ profile.get_role_display|default:"Learning Portal" }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{{ course.title }}</h1>
+    </div>
+    <a href="{% url 'academics:teacher_courses' %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+        <i class="bi bi-arrow-left"></i>
+        Back to courses
+    </a>
+</div>
+{% endblock %}
+
 {% block content %}
-<section class="card border-0 shadow-sm mb-4">
-    <div class="card-body d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3">
-        <div>
-            <div class="d-flex flex-wrap gap-2 mb-3">
-                <span class="badge text-bg-success-subtle text-success-emphasis">{{ course.code }}</span>
-                {% if course.school_year %}
-                    <span class="badge text-bg-info-subtle text-info-emphasis">{{ course.school_year }}</span>
-                {% endif %}
-                {% if course.grade_level %}
-                    <span class="badge text-bg-warning-subtle text-warning-emphasis">{{ course.grade_level }}</span>
-                {% endif %}
-            </div>
-            
-            <p class="eyebrow mb-2">Course overview</p>
-            <p class="text-secondary mb-3">{{ course.description|default:"Course description has not been added yet." }}</p>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
+<div x-data="{ 
+    manageModalOpen: {% if manage_course_modal_open %}true{% else %}false{% endif %}, 
+    uploadModalOpen: {% if material_form.errors %}true{% else %}false{% endif %}, 
+    createModalOpen: {% if section_form.errors %}true{% else %}false{% endif %}, 
+    viewerModalOpen: false, 
+    viewerUrl: '', 
+    viewerType: '', 
+    viewerTitle: '',
+    analyticsFilterOpen: false,
+    analyticsSectionIds: [{% for row in course_analytics.rows %}'{{ row.section.id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+    selectedAnalyticsSections: [{% for row in course_analytics.rows %}'{{ row.section.id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+    analyticsExportUrl() {
+        return '{% url "academics:course_analytics_pdf" course.slug %}?sections=' + this.selectedAnalyticsSections.join(',');
+    }
+}">
+
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+    <div class="p-6 sm:p-8">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Course Overview</h2>
             {% if can_manage %}
-                <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#uploadMaterialModal">
-                    <i class="bi bi-upload me-1"></i> Upload file
-                </button>
-                <button class="btn btn-success" type="button" data-bs-toggle="modal" data-bs-target="#createSectionModal">
-                    <i class="bi bi-plus-lg me-1"></i> Create section
+                <button @click="manageModalOpen = true" class="inline-flex h-9 items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                    <i class="bi bi-gear"></i> Manage course
                 </button>
             {% endif %}
-            <a class="btn btn-outline-success" href="{% url 'academics:teacher_courses' %}">Back to courses</a>
+        </div>
+
+        <dl class="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+                <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Course code</dt>
+                <dd class="mt-1 text-sm font-medium text-gray-900">{{ course.code }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">School year</dt>
+                <dd class="mt-1 text-sm font-medium text-gray-900">{{ course.school_year|default:"Not set" }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Grade level</dt>
+                <dd class="mt-1 text-sm font-medium text-gray-900">{{ course.grade_level|default:"Not set" }}</dd>
+            </div>
+        </dl>
+
+        <div class="mt-6 border-t border-gray-200 pt-6">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</h3>
+            <p class="mt-2 text-sm leading-6 text-gray-700">{{ course.description|default:"Course description has not been added yet." }}</p>
         </div>
     </div>
 </section>
 
-<section class="card border-0 shadow-sm">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-4">
-            <div>
-                <p class="eyebrow mb-1">Sections</p>
-                <h2 class="h4 mb-0">Course Sections</h2>
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+    <div class="p-6 sm:p-8">
+        <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Section Comparison</h2>
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <a
+                    :href="analyticsExportUrl()"
+                    @click.prevent="if (selectedAnalyticsSections.length) window.location.href = analyticsExportUrl()"
+                    :class="selectedAnalyticsSections.length ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-gray-100 text-gray-400 cursor-not-allowed'"
+                    class="inline-flex h-9 items-center justify-center gap-x-2 rounded-md px-3 text-sm font-semibold shadow-sm"
+                >
+                    <i class="bi bi-file-earmark-pdf"></i> Export PDF
+                </a>
+                {% if course_analytics.top_section %}
+                    <div class="rounded-xl bg-green-50 px-4 py-3 text-sm ring-1 ring-inset ring-green-600/10">
+                        <div class="font-semibold text-green-900">Most active section</div>
+                        <div class="mt-1 text-green-800">{{ course_analytics.top_section.section.name }}</div>
+                    </div>
+                {% endif %}
             </div>
         </div>
-        <div class="row g-3">
-            {% for section in course.sections.all %}
-                <div class="col-12 col-xl-6">
-                    <a class="section-card-link" href="{{ section.get_absolute_url }}">
-                        <article class="section-card p-3 p-md-4 h-100">
-                            <div class="section-card__top mb-3">
-                                <div>
-                                    <span class="badge text-bg-success-subtle text-success-emphasis">Section {{ section.order }}</span>
-                                    <h3 class="h5 mt-2 mb-0">{{ section.name }}</h3>
-                                </div>
-                                <span class="badge text-bg-light border">{{ section.section_enrollments.count }} students</span>
+
+        <div class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-xl border border-gray-200 p-4">
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Sections</div>
+                <div class="mt-1 text-2xl font-bold text-gray-900">{{ course_analytics.section_count }}</div>
+            </div>
+            <div class="rounded-xl border border-gray-200 p-4">
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Students</div>
+                <div class="mt-1 text-2xl font-bold text-gray-900">{{ course_analytics.total_students }}</div>
+            </div>
+            <div class="rounded-xl border border-gray-200 p-4">
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Assignments</div>
+                <div class="mt-1 text-2xl font-bold text-gray-900">{{ course_analytics.assignment_count }}</div>
+            </div>
+            <div class="rounded-xl border border-gray-200 p-4">
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Needs attention</div>
+                <div class="mt-1 text-2xl font-bold text-gray-900">{{ course_analytics.needs_attention_count }}</div>
+            </div>
+        </div>
+
+        {% if course_analytics.rows %}
+            <div class="mb-6 rounded-xl border border-gray-200 p-4">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-900">Filter sections</h3>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Showing <span x-text="selectedAnalyticsSections.length"></span> of {{ course_analytics.rows|length }} sections.
+                        </p>
+                    </div>
+                    <div class="relative" @click.away="analyticsFilterOpen = false">
+                        <button type="button" @click="analyticsFilterOpen = !analyticsFilterOpen" class="inline-flex h-9 min-w-48 items-center justify-between gap-x-3 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                            <span><span x-text="selectedAnalyticsSections.length"></span> selected</span>
+                            <i class="bi bi-chevron-down text-gray-500"></i>
+                        </button>
+                        <div x-show="analyticsFilterOpen" x-cloak class="absolute right-0 z-20 mt-2 w-72 rounded-xl bg-white p-2 shadow-lg ring-1 ring-black/5">
+                            <label class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50">
+                                <input
+                                    type="checkbox"
+                                    :checked="selectedAnalyticsSections.length === analyticsSectionIds.length"
+                                    @change="selectedAnalyticsSections = $event.target.checked ? [...analyticsSectionIds] : []"
+                                    class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600"
+                                >
+                                Select all
+                            </label>
+                            <div class="my-2 border-t border-gray-100"></div>
+                            <div class="max-h-64 overflow-y-auto">
+                                {% for row in course_analytics.rows %}
+                                    <label class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                        <input type="checkbox" value="{{ row.section.id }}" x-model="selectedAnalyticsSections" class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600">
+                                        {{ row.section.name }}
+                                    </label>
+                                {% endfor %}
                             </div>
-                            <div class="section-schedule p-3 mb-3">
-                                <div class="small text-secondary">{{ section.schedule_title|default:"Class schedule" }}</div>
-                                <strong>
-                                    {{ section.meeting_days|default:"Days not set" }}
-                                    {% if section.start_time %} - {{ section.start_time|time:"g:i A" }}{% endif %}
-                                    {% if section.end_time %} to {{ section.end_time|time:"g:i A" }}{% endif %}
-                                </strong>
-                                <div class="small text-secondary">{{ section.location|default:"Location not set" }}</div>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span class="text-secondary small">Open section analytics and tools</span>
-                                <span class="btn btn-outline-success btn-sm">View section</span>
-                            </div>
-                        </article>
-                    </a>
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            <div class="overflow-hidden rounded-xl border border-gray-200">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Section</th>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Students</th>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Submissions</th>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Grading</th>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Avg score</th>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">AI use</th>
+                                <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Teacher cue</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            {% for row in course_analytics.rows %}
+                                <tr x-show="selectedAnalyticsSections.includes('{{ row.section.id }}')">
+                                    <td class="px-4 py-4 align-top">
+                                        <a href="{{ row.section.get_absolute_url }}" class="font-semibold text-green-700 hover:text-green-600">{{ row.section.name }}</a>
+                                        <div class="mt-1 text-xs text-gray-500">{{ row.section.meeting_days|default:"No schedule" }}</div>
+                                    </td>
+                                    <td class="px-4 py-4 align-top text-gray-900">{{ row.student_count }}</td>
+                                    <td class="px-4 py-4 align-top">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <span class="text-gray-900">{{ row.submitted_count }}/{{ row.expected_count }}</span>
+                                            <span class="text-xs font-medium text-gray-500">{{ row.submission_rate }}%</span>
+                                        </div>
+                                        <div class="mt-2 h-2 rounded-full bg-gray-100">
+                                            <div class="h-2 rounded-full bg-green-600" style="width: {{ row.submission_rate }}%"></div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 align-top">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <span class="text-gray-900">{{ row.graded_count }}/{{ row.submitted_count }}</span>
+                                            <span class="text-xs font-medium text-gray-500">{{ row.grading_rate }}%</span>
+                                        </div>
+                                        <div class="mt-2 h-2 rounded-full bg-gray-100">
+                                            <div class="h-2 rounded-full bg-emerald-500" style="width: {{ row.grading_rate }}%"></div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 align-top text-gray-900">
+                                        {% if row.average_score != None %}
+                                            {{ row.average_score }}%
+                                        {% else %}
+                                            <span class="text-gray-400">No scores</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-4 py-4 align-top text-gray-900">{{ row.ai_count }}</td>
+                                    <td class="px-4 py-4 align-top">
+                                        {% if row.attention %}
+                                            <div class="flex flex-wrap gap-2">
+                                                {% for cue in row.attention %}
+                                                    <span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">{{ cue }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-gray-500">On track</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div x-show="selectedAnalyticsSections.length === 0" class="border-t border-gray-200 bg-white p-6 text-sm text-gray-500">
+                    No sections selected. Add at least one section to compare analytics or export a PDF.
+                </div>
+            </div>
+        {% else %}
+            <div class="rounded-xl border border-dashed border-gray-300 p-6 text-sm text-gray-500">
+                Create sections to compare enrollment, submissions, grading, scores, and AI activity.
+            </div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+    <div class="p-6 sm:p-8">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Course Sections</h2>
+            {% if can_manage %}
+                <button @click="createModalOpen = true" class="inline-flex h-9 items-center justify-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                    <i class="bi bi-plus-lg"></i> Create section
+                </button>
+            {% endif %}
+        </div>
+        
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {% for section in course.sections.all %}
+                <a href="{{ section.get_absolute_url }}" class="block group">
+                    <article class="relative flex flex-col h-full rounded-2xl border border-gray-200 bg-white p-6 hover:border-green-300 hover:shadow-md hover:-translate-y-1 transition-all duration-300">
+                        <div class="flex justify-between items-start gap-4 mb-4">
+                            <div>
+                                <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Section {{ section.order }}</span>
+                                <h3 class="text-xl font-bold text-gray-900 mt-2 group-hover:text-green-600 transition-colors">{{ section.name }}</h3>
+                            </div>
+                            <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ section.section_enrollments.count }} students</span>
+                        </div>
+                        
+                        <div class="rounded-xl bg-gray-50 p-4 mb-6">
+                            <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Class schedule</div>
+                            <strong class="text-gray-900 text-sm">
+                                {{ section.meeting_days|default:"Days not set" }}
+                                {% if section.start_time %} - {{ section.start_time|time:"g:i A" }}{% endif %}
+                                {% if section.end_time %} to {{ section.end_time|time:"g:i A" }}{% endif %}
+                            </strong>
+                            <div class="text-sm text-gray-500 mt-1 flex items-center gap-1"><i class="bi bi-geo-alt"></i> {{ section.location|default:"Location not set" }}</div>
+                        </div>
+                        
+                        <div class="mt-auto flex justify-end items-center pt-2 border-t border-gray-100">
+                            <span class="text-sm font-semibold text-green-600 group-hover:text-green-500">View section &rarr;</span>
+                        </div>
+                    </article>
+                </a>
             {% empty %}
-                <div class="col-12">
-                    <p class="text-secondary mb-0">No sections yet.</p>
+                <div class="col-span-full">
+                    <p class="text-gray-500 italic">No sections yet.</p>
                 </div>
             {% endfor %}
         </div>
     </div>
 </section>
 
-<section class="card border-0 shadow-sm mt-4">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-4">
-            <div>
-                <p class="eyebrow mb-1">Materials</p>
-                <h2 class="h4 mb-0">Course Files</h2>
-            </div>
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+    <div class="p-6 sm:p-8">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Course Files</h2>
+            {% if can_manage %}
+                <button @click="uploadModalOpen = true" class="inline-flex h-9 items-center justify-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                    <i class="bi bi-upload"></i> Upload file
+                </button>
+            {% endif %}
         </div>
-        <div class="row g-3">
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for material in course.materials.all %}
-                <div class="col-12 col-md-6 col-xl-4">
-                    <article class="card border shadow-sm h-100">
-                        <div class="card-body d-flex flex-column">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h3 class="h6 text-truncate mb-0" title="{{ material.display_name }}">{{ material.display_name }}</h3>
-                                {% if material.material_type == "pdf" %}
-                                    <i class="bi bi-file-earmark-pdf text-danger fs-4"></i>
-                                {% elif material.material_type == "video" %}
-                                    <i class="bi bi-file-earmark-play text-primary fs-4"></i>
-                                {% elif material.material_type == "presentation" %}
-                                    <i class="bi bi-file-earmark-slides text-warning fs-4"></i>
-                                {% elif material.material_type == "image" %}
-                                    <i class="bi bi-file-image text-success fs-4"></i>
-                                {% else %}
-                                    <i class="bi bi-file-earmark text-secondary fs-4"></i>
-                                {% endif %}
-                            </div>
-                            <div class="mb-3 d-flex align-items-center gap-2">
-                                <span class="badge text-bg-light border text-secondary">{{ material.get_category_display }}</span>
-                                <span class="small text-secondary">{{ material.created_at|date:"M j, Y" }}</span>
-                            </div>
-                            <div class="mt-auto d-flex justify-content-between align-items-center">
-                                <div class="d-flex gap-2">
-                                    <button type="button" class="btn btn-primary btn-sm view-material-btn" data-url="{{ material.file.url }}" data-type="{{ material.material_type }}" data-title="{{ material.display_name }}">View</button>
-                                    <a href="{{ material.file.url }}" download class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i></a>
-                                </div>
-                                {% if can_manage %}
-                                    <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="d-inline" onsubmit="return confirm('Delete this material?');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
-                                    </form>
-                                {% endif %}
-                            </div>
+                <article class="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="text-sm font-semibold text-gray-900 truncate pr-4" title="{{ material.display_name }}">{{ material.display_name }}</h3>
+                            {% if material.material_type == "pdf" %}
+                                <i class="bi bi-file-earmark-pdf text-red-500 text-xl"></i>
+                            {% elif material.material_type == "video" %}
+                                <i class="bi bi-file-earmark-play text-blue-500 text-xl"></i>
+                            {% elif material.material_type == "presentation" %}
+                                <i class="bi bi-file-earmark-slides text-yellow-500 text-xl"></i>
+                            {% elif material.material_type == "image" %}
+                                <i class="bi bi-file-image text-green-500 text-xl"></i>
+                            {% else %}
+                                <i class="bi bi-file-earmark text-gray-400 text-xl"></i>
+                            {% endif %}
                         </div>
-                    </article>
-                </div>
+                        <div class="mb-4 flex items-center gap-2">
+                            <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ material.get_category_display }}</span>
+                            <span class="text-xs text-gray-500">{{ material.created_at|date:"M j, Y" }}</span>
+                        </div>
+                        <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
+                            <div class="flex gap-2">
+                                <button @click="viewerModalOpen = true; viewerUrl = '{{ material.file.url }}'; viewerType = '{{ material.material_type }}'; viewerTitle = '{{ material.display_name }}'" type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-semibold text-green-600 hover:bg-green-100">
+                                    View
+                                </button>
+                                <a href="{{ material.file.url }}" download class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                            </div>
+                            {% if can_manage %}
+                                <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="inline-block" onsubmit="return confirm('Delete this material?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
             {% empty %}
-                <div class="col-12">
-                    <p class="text-secondary mb-0">No materials uploaded yet.</p>
+                <div class="col-span-full">
+                    <p class="text-gray-500 italic">No materials uploaded yet.</p>
                 </div>
             {% endfor %}
         </div>
@@ -135,184 +331,250 @@
 </section>
 
 {% if can_manage %}
-<div class="modal fade" id="createSectionModal" tabindex="-1" aria-labelledby="createSectionModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="create_section">
-                <div class="modal-header">
-                    <div>
-                        <p class="eyebrow mb-1">Setup</p>
-                        <h2 class="modal-title h5" id="createSectionModalLabel">Create Section</h2>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body vstack gap-3">
-                    {{ section_form.non_field_errors }}
-                    
-                    <div>
-                        <label class="form-label fw-semibold" for="{{ section_form.name.id_for_label }}">{{ section_form.name.label }}</label>
-                        {{ section_form.name }}
-                        {% for error in section_form.name.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
-                    </div>
-                    
-                    <div>
-                        <label class="form-label fw-semibold" for="{{ section_form.schedule_title.id_for_label }}">{{ section_form.schedule_title.label }}</label>
-                        {{ section_form.schedule_title }}
-                        {% for error in section_form.schedule_title.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
-                    </div>
+<!-- Manage Course Modal -->
+<div x-show="manageModalOpen" x-cloak class="relative z-50" aria-labelledby="manageCourseModalTitle" role="dialog" aria-modal="true">
+  <div x-show="manageModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+  <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+      <div x-show="manageModalOpen" @click.away="manageModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl sm:p-6 text-gray-900">
+        <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+          <button type="button" @click="manageModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+            <span class="sr-only">Close</span>
+            <i class="bi bi-x text-2xl"></i>
+          </button>
+        </div>
 
+        <div class="mb-6">
+            <h3 class="text-xl font-bold leading-6 text-gray-900" id="manageCourseModalTitle">Manage Course</h3>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="edit_course">
+            <div class="space-y-4">
+                {% if course_form.non_field_errors %}
+                    <div class="rounded-md bg-red-50 p-4 border border-red-200">
+                        <div class="text-sm text-red-700">{{ course_form.non_field_errors }}</div>
+                    </div>
+                {% endif %}
+
+                <div class="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <label class="form-label fw-semibold">{{ section_form.meeting_days.label }}</label>
-                        <div class="d-flex flex-wrap gap-3 mt-1">
+                        <label for="{{ course_form.title.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ course_form.title.label }}</label>
+                        <div class="mt-1">{{ course_form.title }}</div>
+                        {% for error in course_form.title.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div>
+                        <label for="{{ course_form.code.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ course_form.code.label }}</label>
+                        <div class="mt-1">{{ course_form.code }}</div>
+                        {% for error in course_form.code.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div>
+                        <label for="{{ course_form.school_year.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ course_form.school_year.label }}</label>
+                        <div class="mt-1">{{ course_form.school_year }}</div>
+                        {% for error in course_form.school_year.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div>
+                        <label for="{{ course_form.grade_level.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ course_form.grade_level.label }}</label>
+                        <div class="mt-1">{{ course_form.grade_level }}</div>
+                        {% for error in course_form.grade_level.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                </div>
+
+                <div>
+                    <label for="{{ course_form.description.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ course_form.description.label }}</label>
+                    <div class="mt-1">{{ course_form.description }}</div>
+                    {% for error in course_form.description.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+
+            <div class="mt-6 flex items-center justify-end gap-x-4 border-t border-gray-100 pt-4">
+                <button type="button" @click="manageModalOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">Save changes</button>
+            </div>
+        </form>
+
+        <div class="mt-8 rounded-xl border border-red-200 bg-red-50 p-4">
+            <div class="flex items-start gap-3">
+                <i class="bi bi-exclamation-triangle text-lg text-red-600"></i>
+                <div>
+                    <h4 class="text-sm font-semibold text-red-900">Delete course</h4>
+                    <p class="mt-1 text-sm text-red-700">This permanently removes the course, its sections, enrollments, assignments, and uploaded course files.</p>
+                </div>
+            </div>
+            <form method="post" class="mt-4">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_course">
+                <label for="confirm_course_code" class="block text-sm font-medium leading-6 text-red-900">Type {{ course.code }} to confirm</label>
+                <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+                    <input id="confirm_course_code" name="confirm_course_code" type="text" class="block w-full rounded-md border border-red-300 px-3 py-2 text-gray-900 shadow-sm outline-none placeholder:text-gray-400 focus:border-red-600 focus:ring-1 focus:ring-red-600 sm:text-sm sm:leading-6">
+                    <button type="submit" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-red-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-red-500">Delete course</button>
+                </div>
+            </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Section Modal -->
+<div x-show="createModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <div x-show="createModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+  <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+      <div x-show="createModalOpen" @click.away="createModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6 text-gray-900">
+        <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+          <button type="button" @click="createModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+            <span class="sr-only">Close</span>
+            <i class="bi bi-x text-2xl"></i>
+          </button>
+        </div>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create_section">
+            <div>
+                <h3 class="text-xl font-bold leading-6 text-gray-900 mb-6" id="modal-title">Create Section</h3>
+                <div class="mt-2 space-y-4">
+                    {% if section_form.non_field_errors %}
+                        <div class="rounded-md bg-red-50 p-4 border border-red-200">
+                            <div class="text-sm text-red-700">{{ section_form.non_field_errors }}</div>
+                        </div>
+                    {% endif %}
+                    
+                    <div>
+                        <label for="{{ section_form.name.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.name.label }}</label>
+                        <div class="mt-1">{{ section_form.name }}</div>
+                        {% for error in section_form.name.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">{{ section_form.meeting_days.label }}</label>
+                        <div class="flex flex-wrap gap-4">
                             {% for checkbox in section_form.meeting_days %}
-                            <div class="form-check">
+                            <div class="flex items-center">
                                 {{ checkbox.tag }}
-                                <label class="form-check-label" for="{{ checkbox.id_for_label }}">
-                                    {{ checkbox.choice_label }}
-                                </label>
+                                <label for="{{ checkbox.id_for_label }}" class="ml-2 text-sm text-gray-900">{{ checkbox.choice_label }}</label>
                             </div>
                             {% endfor %}
                         </div>
-                        {% for error in section_form.meeting_days.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        {% for error in section_form.meeting_days.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
                     </div>
 
-                    <div class="row g-3">
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold" for="{{ section_form.start_time.id_for_label }}">{{ section_form.start_time.label }}</label>
-                            {{ section_form.start_time }}
-                            {% for error in section_form.start_time.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="{{ section_form.start_time.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.start_time.label }}</label>
+                            <div class="mt-1">{{ section_form.start_time }}</div>
+                            {% for error in section_form.start_time.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
                         </div>
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold" for="{{ section_form.end_time.id_for_label }}">{{ section_form.end_time.label }}</label>
-                            {{ section_form.end_time }}
-                            {% for error in section_form.end_time.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        <div>
+                            <label for="{{ section_form.end_time.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.end_time.label }}</label>
+                            <div class="mt-1">{{ section_form.end_time }}</div>
+                            {% for error in section_form.end_time.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
                         </div>
                     </div>
 
                     <div>
-                        <label class="form-label fw-semibold" for="{{ section_form.location.id_for_label }}">{{ section_form.location.label }}</label>
-                        {{ section_form.location }}
-                        {% for error in section_form.location.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                        <label for="{{ section_form.location.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ section_form.location.label }}</label>
+                        <div class="mt-1">{{ section_form.location }}</div>
+                        {% for error in section_form.location.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-success" type="submit">Create section</button>
-                </div>
-            </form>
-        </div>
+            </div>
+            <div class="mt-6 flex items-center justify-end gap-x-4 border-t border-gray-100 pt-4">
+                <button type="button" @click="createModalOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                <button type="submit" class="inline-flex justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">Create section</button>
+            </div>
+        </form>
+      </div>
     </div>
+  </div>
 </div>
-{% if section_form.errors %}
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        const modalElement = document.getElementById("createSectionModal");
-        if (modalElement && window.bootstrap) {
-            bootstrap.Modal.getOrCreateInstance(modalElement).show();
-        }
-    });
-</script>
-{% endif %}
 
-<div class="modal fade" id="uploadMaterialModal" tabindex="-1" aria-labelledby="uploadMaterialModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="upload_material">
-                <div class="modal-header">
-                    <div>
-                        <p class="eyebrow mb-1">Materials</p>
-                        <h2 class="modal-title h5" id="uploadMaterialModalLabel">Upload File</h2>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body vstack gap-3">
-                    {{ material_form.non_field_errors }}
+<!-- Upload Material Modal -->
+<div x-show="uploadModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <div x-show="uploadModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+  <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+      <div x-show="uploadModalOpen" @click.away="uploadModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6 text-gray-900">
+        <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+          <button type="button" @click="uploadModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+            <span class="sr-only">Close</span>
+            <i class="bi bi-x text-2xl"></i>
+          </button>
+        </div>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload_material">
+            <div>
+                <h3 class="text-xl font-bold leading-6 text-gray-900 mb-6" id="modal-title">Upload File</h3>
+                <div class="mt-2 space-y-4">
+                    {% if material_form.non_field_errors %}
+                        <div class="rounded-md bg-red-50 p-4 border border-red-200">
+                            <div class="text-sm text-red-700">{{ material_form.non_field_errors }}</div>
+                        </div>
+                    {% endif %}
+                    
                     {% for field in material_form %}
                         <div>
-                            <label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            <label for="{{ field.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900 mb-1">{{ field.label }}</label>
                             {{ field }}
-                            {% for error in field.errors %}<div class="form-text text-danger">{{ error }}</div>{% endfor %}
+                            {% for error in field.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
                         </div>
                     {% endfor %}
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-primary" type="submit">Upload</button>
+            </div>
+            <div class="mt-6 flex items-center justify-end gap-x-4 border-t border-gray-100 pt-4">
+                <button type="button" @click="uploadModalOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                <button type="submit" class="inline-flex justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">Upload</button>
+            </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Material Viewer Modal -->
+<div x-show="viewerModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <div x-show="viewerModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+  <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+      <div x-show="viewerModalOpen" @click.away="viewerModalOpen = false; viewerType = ''" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-5xl text-gray-900">
+        <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <h3 class="text-lg font-semibold text-gray-900" x-text="viewerTitle">File Viewer</h3>
+            <button type="button" @click="viewerModalOpen = false; viewerType = ''" class="rounded-md text-gray-400 hover:text-gray-500 focus:outline-none">
+                <span class="sr-only">Close</span>
+                <i class="bi bi-x text-2xl"></i>
+            </button>
+        </div>
+        <div class="bg-gray-100 min-h-[60vh] flex flex-col justify-center items-center">
+            <template x-if="viewerType === 'image'">
+                <div class="p-4 w-full h-full flex justify-center items-center">
+                    <img :src="viewerUrl" class="max-h-[80vh] max-w-full object-contain" :alt="viewerTitle">
                 </div>
-            </form>
+            </template>
+            <template x-if="viewerType === 'video'">
+                <video controls class="w-full max-h-[80vh] bg-black">
+                    <source :src="viewerUrl">
+                </video>
+            </template>
+            <template x-if="viewerType === 'pdf'">
+                <iframe :src="viewerUrl" class="w-full border-0 h-[80vh]"></iframe>
+            </template>
+            <template x-if="viewerType !== 'image' && viewerType !== 'video' && viewerType !== 'pdf' && viewerType !== ''">
+                <div class="flex flex-col justify-center items-center h-[60vh] p-8 text-center">
+                    <i class="bi bi-file-earmark-text text-6xl text-gray-400 mb-4"></i>
+                    <p class="text-lg text-gray-900 font-medium">This file type cannot be previewed directly in the browser.</p>
+                    <a :href="viewerUrl" download class="mt-4 inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                        <i class="bi bi-download"></i> Download File
+                    </a>
+                </div>
+            </template>
         </div>
+      </div>
     </div>
-</div>
-{% if material_form.errors %}
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        const modalElement = document.getElementById("uploadMaterialModal");
-        if (modalElement && window.bootstrap) {
-            bootstrap.Modal.getOrCreateInstance(modalElement).show();
-        }
-    });
-</script>
-{% endif %}
-
-{% endif %}
-<div class="modal fade" id="materialViewerModal" tabindex="-1" aria-labelledby="materialViewerModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header">
-                <h5 class="modal-title" id="materialViewerModalLabel">File Viewer</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-0" id="materialViewerContainer" style="min-height: 60vh; background-color: #f8f9fa;">
-                <!-- Content injected via JS -->
-            </div>
-        </div>
-    </div>
+  </div>
 </div>
 
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        const viewerModal = document.getElementById("materialViewerModal");
-        if (viewerModal) {
-            const viewerContainer = document.getElementById("materialViewerContainer");
-            const viewerTitle = document.getElementById("materialViewerModalLabel");
-            const modalInstance = new bootstrap.Modal(viewerModal);
-            
-            document.querySelectorAll(".view-material-btn").forEach(btn => {
-                btn.addEventListener("click", (e) => {
-                    const url = btn.getAttribute("data-url");
-                    const type = btn.getAttribute("data-type");
-                    const title = btn.getAttribute("data-title");
-                    
-                    viewerTitle.textContent = title;
-                    viewerContainer.innerHTML = "";
-                    
-                    if (type === "image") {
-                        viewerContainer.innerHTML = `<div class="d-flex justify-content-center align-items-center h-100 p-3"><img src="${url}" class="img-fluid" style="max-height: 80vh;" alt="${title}"></div>`;
-                    } else if (type === "video") {
-                        viewerContainer.innerHTML = `<video controls class="w-100" style="max-height: 80vh;"><source src="${url}"></video>`;
-                    } else if (type === "pdf") {
-                        viewerContainer.innerHTML = `<iframe src="${url}" class="w-100 border-0" style="height: 80vh;"></iframe>`;
-                    } else {
-                        viewerContainer.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center h-100 p-5 text-center">
-                            <i class="bi bi-file-earmark-text display-1 text-secondary mb-3"></i>
-                            <p class="fs-5">This file type cannot be previewed directly in the browser.</p>
-                            <a href="${url}" download class="btn btn-primary mt-3"><i class="bi bi-download me-1"></i>Download File</a>
-                        </div>`;
-                    }
-                    
-                    modalInstance.show();
-                });
-            });
-            
-            // Stop video playing when modal closes
-            viewerModal.addEventListener('hidden.bs.modal', () => {
-                viewerContainer.innerHTML = "";
-            });
-        }
-    });
-</script>
+</div>
 {% endblock %}

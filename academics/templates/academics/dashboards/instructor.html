@@ -4,51 +4,43 @@
 {% block page_title %}Teacher Dashboard{% endblock %}
 
 {% block content %}
-<section class="row g-3 mb-4">
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Courses" value=course_count caption="Active teaching load" %}</div>
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Students" value=student_count caption="Total enrollments" %}</div>
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="To Grade" value=pending_submission_count caption="Pending submissions" %}</div>
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="At Risk" value=at_risk_count caption="Below 45% progress" %}</div>
+<section class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+    <div>{% include "components/stat_card.html" with label="Courses" value=course_count caption="Active teaching load" %}</div>
+    <div>{% include "components/stat_card.html" with label="Students" value=student_count caption="Total enrollments" %}</div>
+    <div>{% include "components/stat_card.html" with label="To Grade" value=pending_submission_count caption="Pending submissions" %}</div>
+    <div>{% include "components/stat_card.html" with label="At Risk" value=at_risk_count caption="Below 45% progress" %}</div>
 </section>
 
-<section class="row g-4">
-    <div class="col-12 col-xl-8">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-                <div>
-                    <p class="eyebrow mb-1">Teaching</p>
-                    <h2 class="h4 mb-0">Courses</h2>
-                </div>
-            </div>
-                <div class="row g-3">
-                    {% for course in courses %}
-                        <div class="col-12 col-md-6">{% include "components/course_card.html" with course=course %}</div>
-                    {% empty %}
-                        <div class="col-12"><p class="text-secondary mb-0">No courses assigned.</p></div>
-                    {% endfor %}
-                </div>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+    <section class="xl:col-span-2 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="p-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Courses</h2>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {% for course in courses %}
+                    {% include "components/course_card.html" with course=course %}
+                {% empty %}
+                    <div class="col-span-full"><p class="text-gray-500 italic">No courses assigned.</p></div>
+                {% endfor %}
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="col-12 col-xl-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <p class="eyebrow mb-1">Assessment</p>
-                <h2 class="h4 mb-3">Pending Grading</h2>
-                <div class="list-group list-group-flush">
-                    {% for submission in pending_submissions %}
-                        <div class="list-group-item px-0">
-                            <strong>{{ submission.student.get_full_name|default:submission.student.username }}</strong>
-                            <div class="small text-secondary">{{ submission.assignment.title }} - {{ submission.assignment.course.code }}</div>
-                        </div>
-                    {% empty %}
-                        <p class="text-secondary mb-0">No pending submissions.</p>
-                    {% endfor %}
-                </div>
-            </div>
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 h-full">
+        <div class="p-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Pending Grading</h2>
+            
+            <ul role="list" class="divide-y divide-gray-100">
+                {% for submission in pending_submissions %}
+                    <li class="py-4">
+                        <strong class="text-sm font-semibold text-gray-900 block mb-1">{{ submission.student.get_full_name|default:submission.student.username }}</strong>
+                        <div class="text-xs text-gray-500">{{ submission.assignment.title }} - <span class="font-medium text-gray-700">{{ submission.assignment.course.code }}</span></div>
+                    </li>
+                {% empty %}
+                    <li class="py-4"><p class="text-gray-500 italic">No pending submissions.</p></li>
+                {% endfor %}
+            </ul>
         </div>
-    </div>
-</section>
+    </section>
+</div>
 {% endblock %}

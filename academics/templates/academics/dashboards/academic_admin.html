@@ -4,64 +4,64 @@
 {% block page_title %}Academic Admin Dashboard{% endblock %}
 
 {% block content %}
-<section class="row g-3 mb-4">
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Students" value=total_students caption="Registered learners" %}</div>
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Instructors" value=total_instructors caption="Teaching staff" %}</div>
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="Courses" value=total_courses caption="Academic catalog" %}</div>
-    <div class="col-12 col-sm-6 col-xl-3">{% include "components/stat_card.html" with label="At Risk" value=at_risk_count caption="Needs attention" %}</div>
+<section class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+    <div>{% include "components/stat_card.html" with label="Students" value=total_students caption="Registered learners" %}</div>
+    <div>{% include "components/stat_card.html" with label="Instructors" value=total_instructors caption="Teaching staff" %}</div>
+    <div>{% include "components/stat_card.html" with label="Courses" value=total_courses caption="Academic catalog" %}</div>
+    <div>{% include "components/stat_card.html" with label="At Risk" value=at_risk_count caption="Needs attention" %}</div>
 </section>
 
-<section class="row g-4">
-    <div class="col-12 col-xl-8">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body">
-                <p class="eyebrow mb-1">Institution</p>
-                <h2 class="h4 mb-3">Course Activity</h2>
-                <div class="table-responsive">
-                    <table class="table align-middle">
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+    <section class="xl:col-span-2 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="p-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Course Activity</h2>
+            
+            <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                    <table class="min-w-full divide-y divide-gray-300">
                         <thead>
                             <tr>
-                                <th>Course</th>
-                                <th>Instructor</th>
-                                <th>Students</th>
-                                <th>Assignments</th>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Course</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Instructor</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Students</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Assignments</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="divide-y divide-gray-200">
                             {% for course in course_activity %}
                                 <tr>
-                                    <td><a class="text-decoration-none text-success fw-semibold" href="{{ course.get_absolute_url }}">{{ course.code }} - {{ course.title }}</a></td>
-                                    <td>{{ course.instructor.get_full_name|default:course.instructor.username }}</td>
-                                    <td>{{ course.student_total }}</td>
-                                    <td>{{ course.assignment_total }}</td>
+                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-green-600 sm:pl-0">
+                                        <a href="{{ course.get_absolute_url }}" class="hover:text-green-900">{{ course.code }} - {{ course.title }}</a>
+                                    </td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ course.instructor.get_full_name|default:course.instructor.username }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ course.student_total }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ course.assignment_total }}</td>
                                 </tr>
                             {% empty %}
-                                <tr><td colspan="4">No courses yet.</td></tr>
+                                <tr><td colspan="4" class="py-4 pl-4 pr-3 text-sm text-gray-500 sm:pl-0 italic">No courses yet.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="col-12 col-xl-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <p class="eyebrow mb-1">AI Load</p>
-                <h2 class="h4 mb-3">Recent Tasks</h2>
-                <div class="list-group list-group-flush">
-                    {% for item in ai_requests %}
-                        <div class="list-group-item px-0">
-                            <strong>{{ item.get_tool_type_display }}</strong>
-                            <div class="small text-secondary">{{ item.user.username }} - {{ item.get_status_display }}</div>
-                        </div>
-                    {% empty %}
-                        <p class="text-secondary mb-0">No AI activity.</p>
-                    {% endfor %}
-                </div>
-            </div>
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 h-full">
+        <div class="p-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Recent Tasks</h2>
+            
+            <ul role="list" class="divide-y divide-gray-100">
+                {% for item in ai_requests %}
+                    <li class="py-4">
+                        <strong class="text-sm font-semibold text-gray-900 block mb-1">{{ item.get_tool_type_display }}</strong>
+                        <div class="text-xs text-gray-500">{{ item.user.username }} &bull; <span class="text-green-600 font-medium">{{ item.get_status_display }}</span></div>
+                    </li>
+                {% empty %}
+                    <li class="py-4"><p class="text-gray-500 italic">No AI activity.</p></li>
+                {% endfor %}
+            </ul>
         </div>
-    </div>
-</section>
+    </section>
+</div>
 {% endblock %}

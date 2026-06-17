@@ -51,6 +51,32 @@ docker compose logs -f worker
 docker compose down
 ```
 
+### Rebuild Docker after code changes
+
+For normal code, template, CSS, Python dependency, or Dockerfile changes, rebuild the local images and start the services again:
+
+```powershell
+docker compose down
+docker compose up --build
+```
+
+If Docker seems to reuse an old layer, force a clean rebuild:
+
+```powershell
+docker compose build --no-cache
+docker compose up
+```
+
+For database model changes, create and commit migrations before rebuilding:
+
+```powershell
+conda activate syllabi_lms
+python manage.py makemigrations
+docker compose up --build
+```
+
+The `web` service runs migrations automatically on startup. The `worker` service must also be rebuilt when shared code changes because it uses the same Django image.
+
 To delete the local Docker database and start fresh:
 
 ```powershell
@@ -79,3 +105,13 @@ After creating the Render blueprint, set:
 
 - `ALLOWED_HOSTS` to your Render host, for example `syllabi-lms-web.onrender.com`
 - `CSRF_TRUSTED_ORIGINS` to your full Render origin, for example `https://syllabi-lms-web.onrender.com`
+
+To deploy changes to Render:
+
+```powershell
+git add .
+git commit -m "Describe your change"
+git push
+```
+
+Render rebuilds the Docker image from the pushed commit and redeploys the web and worker services. If auto-deploy is disabled, open the service in Render and choose **Manual Deploy**.

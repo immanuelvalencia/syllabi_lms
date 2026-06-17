@@ -1,48 +1,59 @@
-<section class="card border-0 shadow-sm h-100">
-    <div class="card-body">
-    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-        <div>
-            <p class="eyebrow mb-1">AI workspace</p>
-            <h2 class="h4 mb-0">{{ title|default:"Smart tools" }}</h2>
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 h-full">
+    <div class="p-6">
+        <div class="flex justify-between items-start gap-3 mb-6">
+            <div>
+                <h2 class="text-xl font-bold tracking-tight text-gray-900">{{ title|default:"Smart tools" }}</h2>
+            </div>
+            <div class="p-2 bg-green-50 rounded-lg">
+                <i class="bi bi-robot text-xl text-green-600"></i>
+            </div>
         </div>
-    </div>
-    <form class="vstack gap-3" action="{% url 'academics:create_ai_tool_request' %}" method="post">
-        {% csrf_token %}
-        {% if course %}
-            <input type="hidden" name="course_public_id" value="{{ course.public_id }}">
-            <input type="hidden" name="next" value="{{ course.get_absolute_url }}">
-        {% endif %}
-        {% if section %}
-            <input type="hidden" name="section_public_id" value="{{ section.public_id }}">
-            <input type="hidden" name="next" value="{{ section.get_absolute_url }}">
-        {% endif %}
-        <label class="form-label mb-0">
-            <span class="d-block fw-semibold mb-1">Tool</span>
-            <select class="form-select" name="tool_type">
-                <option value="study_plan">Study plan</option>
-                <option value="quiz_generator">Quiz generator</option>
-                <option value="lesson_summary">Lesson summary</option>
-                <option value="feedback_assistant">Feedback assistant</option>
-                <option value="risk_insights">Risk insights</option>
-            </select>
-        </label>
-        <label class="form-label mb-0">
-            <span class="d-block fw-semibold mb-1">Context</span>
-            <textarea class="form-control" name="prompt" rows="4" placeholder="Paste lesson notes, class context, or a student question"></textarea>
-        </label>
-        <button class="btn btn-success" type="submit">Queue AI task</button>
-    </form>
 
-    <div class="vstack gap-2 mt-4">
-        {% for item in ai_requests %}
-            <article class="border rounded-3 p-3 bg-success-subtle">
-                <span class="badge text-bg-light border mb-2">{{ item.get_status_display }}</span>
-                <strong class="d-block">{{ item.get_tool_type_display }}</strong>
-                {% if item.result %}<p class="mb-0 text-secondary">{{ item.result|linebreaksbr }}</p>{% endif %}
-            </article>
-        {% empty %}
-            <p class="text-secondary mb-0">No AI requests yet.</p>
-        {% endfor %}
-    </div>
+        <form class="flex flex-col gap-y-4" action="{% url 'academics:create_ai_tool_request' %}" method="post">
+            {% csrf_token %}
+            {% if course %}
+                <input type="hidden" name="course_public_id" value="{{ course.public_id }}">
+                <input type="hidden" name="next" value="{{ course.get_absolute_url }}">
+            {% endif %}
+            {% if section %}
+                <input type="hidden" name="section_public_id" value="{{ section.public_id }}">
+                <input type="hidden" name="next" value="{{ section.get_absolute_url }}">
+            {% endif %}
+            
+            <div>
+                <label for="tool_type" class="block text-sm font-medium leading-6 text-gray-900 mb-1">Tool</label>
+                <select id="tool_type" name="tool_type" class="block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-green-600 sm:text-sm sm:leading-6">
+                    <option value="study_plan">Study plan</option>
+                    <option value="quiz_generator">Quiz generator</option>
+                    <option value="lesson_summary">Lesson summary</option>
+                    <option value="feedback_assistant">Feedback assistant</option>
+                    <option value="risk_insights">Risk insights</option>
+                </select>
+            </div>
+            
+            <div>
+                <label for="prompt" class="block text-sm font-medium leading-6 text-gray-900 mb-1">Context</label>
+                <textarea id="prompt" name="prompt" rows="4" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6" placeholder="Paste lesson notes, class context, or a student question"></textarea>
+            </div>
+            
+            <button type="submit" class="mt-2 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 w-full flex justify-center items-center gap-2">
+                <i class="bi bi-magic"></i> Queue AI task
+            </button>
+        </form>
+
+        <div class="mt-8 flex flex-col gap-y-3">
+            <h3 class="text-sm font-semibold text-gray-900">Recent Requests</h3>
+            {% for item in ai_requests %}
+                <article class="rounded-xl p-4 bg-green-50/50 border border-green-100">
+                    <span class="inline-flex items-center rounded-md bg-white px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-200 mb-2">{{ item.get_status_display }}</span>
+                    <strong class="block text-sm font-medium text-green-900">{{ item.get_tool_type_display }}</strong>
+                    {% if item.result %}
+                        <p class="mt-1 text-sm text-green-800 bg-white/60 p-2 rounded border border-green-100/50">{{ item.result|linebreaksbr }}</p>
+                    {% endif %}
+                </article>
+            {% empty %}
+                <p class="text-sm text-gray-500 italic">No AI requests yet.</p>
+            {% endfor %}
+        </div>
     </div>
 </section>

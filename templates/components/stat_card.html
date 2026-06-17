@@ -1,7 +1,9 @@
-<article class="card border-0 shadow-sm h-100 stat-card">
-    <div class="card-body">
-        <span class="text-secondary small fw-semibold text-uppercase">{{ label }}</span>
-        <strong class="d-block display-6 fw-bold text-success mt-2">{{ value }}</strong>
-        {% if caption %}<small class="text-secondary">{{ caption }}</small>{% endif %}
+<article class="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5 sm:p-6 p-4 h-full flex flex-col justify-between hover:shadow-md transition-shadow">
+    <div>
+        <span class="text-xs font-semibold leading-6 text-gray-500 uppercase tracking-wide">{{ label }}</span>
+        <strong class="mt-2 text-3xl font-bold tracking-tight text-green-600 block">{{ value }}</strong>
+        {% if caption %}
+            <p class="mt-2 text-sm text-gray-500">{{ caption }}</p>
+        {% endif %}
     </div>
 </article>

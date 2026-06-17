@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+
+@source "../../templates/**/*.html";
+@source "../../academics/templates/**/*.html";
+
+@layer base {
+  [x-cloak] {
+    display: none !important;
+  }
+}
