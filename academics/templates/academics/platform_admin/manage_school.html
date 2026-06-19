@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Manage {{ school.name }} | Syllabi LMS{% endblock %}
+{% block page_title %}{{ school.name }}{% endblock %}
+
+{% block content %}
+<div style="max-width:900px; margin:0 auto;">
+
+  {% if messages %}
+    {% for message in messages %}
+      <div style="margin-bottom:16px; background:{% if message.tags == 'error' %}#fef2f2; border:1px solid #fca5a5;{% else %}#f0fdf4; border:1px solid #86efac;{% endif %} border-radius:8px; padding:12px 16px; font-size:0.875rem; color:{% if message.tags == 'error' %}#b91c1c{% else %}#166534{% endif %};">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+    <div>
+      <a href="{% url 'academics:platform_admin_dashboard' %}" style="font-size:0.8rem; color:#6b7280; text-decoration:none; display:inline-flex; align-items:center; gap:4px; margin-bottom:8px;">
+        <i class="bi bi-arrow-left"></i> All Schools
+      </a>
+      <h1 style="font-size:1.4rem; font-weight:700; color:#111827; margin:0;">{{ school.name }}</h1>
+      <p style="font-size:0.85rem; color:#6b7280; margin:4px 0 0 0;">School management panel</p>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{% url 'academics:edit_school' school.pk %}"
+         class="rounded-lg bg-green-600 text-white hover:bg-green-500"
+         style="display:inline-flex; align-items:center; gap:6px; padding:8px 16px; font-size:0.875rem; font-weight:600; text-decoration:none; border:none;">
+        <i class="bi bi-pencil-fill"></i> Edit School
+      </a>
+      <a href="{% url 'academics:delete_school' school.pk %}"
+         style="display:inline-flex; align-items:center; gap:6px; padding:8px 16px; font-size:0.875rem; font-weight:600; background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; border-radius:8px; text-decoration:none;">
+        <i class="bi bi-trash3-fill"></i> Delete School
+      </a>
+    </div>
+  </div>
+
+  <!-- School Info Cards -->
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px;">
+    <div class="bg-white rounded-2xl shadow-sm p-6" style="border:1px solid #e5e7eb;">
+      <p style="font-size:0.7rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 6px 0;">Student Code</p>
+      <p style="font-size:1rem; font-weight:700; color:#111827; font-family:monospace; margin:0;">{{ school.school_code }}</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-6" style="border:1px solid #e5e7eb;">
+      <p style="font-size:0.7rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 6px 0;">Teacher Code</p>
+      <p style="font-size:1rem; font-weight:700; color:#111827; font-family:monospace; margin:0;">{{ school.teacher_code|default:"—" }}</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-6" style="border:1px solid #e5e7eb;">
+      <p style="font-size:0.7rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 6px 0;">Admin Code</p>
+      <p style="font-size:1rem; font-weight:700; color:#111827; font-family:monospace; margin:0;">{{ school.admin_code|default:"—" }}</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-6" style="border:1px solid #e5e7eb;">
+      <p style="font-size:0.7rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 6px 0;">Total Users</p>
+      <p style="font-size:1rem; font-weight:700; color:#111827; margin:0;">{{ profiles|length }}</p>
+    </div>
+  </div>
+
+  <!-- Users Table -->
+  <div class="bg-white rounded-2xl shadow-sm" style="border:1px solid #e5e7eb;">
+    <div style="padding:20px 24px; border-bottom:1px solid #f3f4f6; display:flex; align-items:center; justify-content:space-between;">
+      <h2 style="font-size:1rem; font-weight:600; color:#111827; margin:0;">Users</h2>
+      <a href="{% url 'academics:create_user' %}"
+         class="rounded-lg bg-green-600 text-white hover:bg-green-500"
+         style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px; font-size:0.8rem; font-weight:600; text-decoration:none;">
+        <i class="bi bi-person-plus-fill"></i> Add User
+      </a>
+    </div>
+
+    {% if profiles %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+        <thead>
+          <tr style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+            <th style="padding:12px 16px; text-align:left; font-weight:600; color:#374151;">Name</th>
+            <th style="padding:12px 16px; text-align:left; font-weight:600; color:#374151;">Email</th>
+            <th style="padding:12px 16px; text-align:left; font-weight:600; color:#374151;">Role</th>
+            <th style="padding:12px 16px; text-align:left; font-weight:600; color:#374151;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for profile in profiles %}
+          <tr style="border-bottom:1px solid #f3f4f6;">
+            <td style="padding:14px 16px; font-weight:500; color:#111827;">
+              {{ profile.user.get_full_name|default:profile.user.username }}
+            </td>
+            <td style="padding:14px 16px; color:#6b7280;">{{ profile.user.email }}</td>
+            <td style="padding:14px 16px;">
+              <form method="post" action="{% url 'academics:change_user_role' school.pk profile.user.pk %}">
+                {% csrf_token %}
+                <select name="role" onchange="this.form.submit()"
+                  style="border:1px solid #d1d5db; border-radius:6px; padding:5px 10px; font-size:0.8rem; color:#374151; background:#fff; cursor:pointer; outline:none;">
+                  {% for value, label in role_choices %}
+                    <option value="{{ value }}" {% if profile.role == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+            <td style="padding:14px 16px;">
+              <form method="post" action="{% url 'academics:remove_user_from_school' school.pk profile.user.pk %}"
+                    onsubmit="return confirm('Remove {{ profile.user.get_full_name|default:profile.user.username }} from this school?');">
+                {% csrf_token %}
+                <button type="submit"
+                  style="display:inline-flex; align-items:center; gap:4px; padding:5px 12px; font-size:0.78rem; font-weight:500; background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; border-radius:6px; cursor:pointer;">
+                  <i class="bi bi-person-dash-fill"></i> Remove
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding:40px; text-align:center; color:#9ca3af; font-size:0.875rem;">
+      <i class="bi bi-people" style="font-size:2rem; display:block; margin-bottom:8px;"></i>
+      No users in this school yet.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

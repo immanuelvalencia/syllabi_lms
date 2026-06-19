@@ -1,0 +1,102 @@
+{% load static %}
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign up | Syllabi LMS</title>
+    <link href="{% static 'css/tailwind.css' %}" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" rel="stylesheet">
+</head>
+<body class="h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50 antialiased text-gray-900">
+    <div class="w-full max-w-md space-y-8 bg-white p-8 rounded-xl shadow-lg shadow-gray-200/50 border border-gray-100">
+        <div>
+            <div class="flex justify-center">
+                <a href="{% url 'academics:dashboard' %}" class="flex items-center gap-3 text-green-600 font-bold text-2xl">
+                    <div class="w-12 h-12 rounded-xl bg-green-600 text-white flex items-center justify-center shadow-md shadow-green-600/30">
+                        <i class="bi bi-mortarboard-fill text-2xl"></i>
+                    </div>
+                </a>
+            </div>
+            <h2 class="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">Create an account</h2>
+            <p class="mt-2 text-center text-sm text-gray-600">Join your school using a School Code</p>
+        </div>
+        
+        {% if form.errors %}
+            <div class="rounded-md bg-red-50 p-4 border border-red-200">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-x-circle-fill text-red-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800">Please correct the errors below.</h3>
+                        <div class="mt-2 text-sm text-red-700">
+                            {{ form.non_field_errors }}
+                            {% for field in form %}
+                                {% if field.errors %}
+                                    <li>{{ field.label }}: {{ field.errors|striptags }}</li>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        
+        <form class="mt-8 space-y-6" method="post">
+            {% csrf_token %}
+            <div class="space-y-4 rounded-md shadow-sm">
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label for="{{ form.first_name.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">First Name</label>
+                        <div class="mt-2">
+                            {{ form.first_name }}
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <label for="{{ form.last_name.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">Last Name</label>
+                        <div class="mt-2">
+                            {{ form.last_name }}
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label for="{{ form.email.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">Email Address</label>
+                    <div class="mt-2">
+                        {{ form.email }}
+                    </div>
+                </div>
+                <div>
+                    <label for="{{ form.password.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">Password</label>
+                    <div class="mt-2">
+                        {{ form.password }}
+                    </div>
+                </div>
+                <div>
+                    <label for="{{ form.school_code.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">School Code</label>
+                    <div class="mt-2">
+                        {{ form.school_code }}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Ask your administrator for your school's unique code.</p>
+                </div>
+                <div>
+                    <label for="{{ form.role.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">I am a...</label>
+                    <div class="mt-2">
+                        {{ form.role }}
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" class="group relative flex w-full justify-center rounded-md bg-gray-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 transition-colors">
+                    Sign up
+                </button>
+            </div>
+            
+            <div class="text-center text-sm">
+                <a href="{% url 'login' %}" class="font-medium text-indigo-600 hover:text-indigo-500">Already have an account? Sign in</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

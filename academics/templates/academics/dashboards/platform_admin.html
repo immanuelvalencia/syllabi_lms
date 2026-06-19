@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Platform Admin Dashboard | Syllabi LMS{% endblock %}
+{% block page_title %}Platform Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex justify-end gap-4">
+    <a href="{% url 'academics:create_school' %}" class="inline-flex justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">
+        <i class="bi bi-plus-lg mr-2"></i> Create School
+    </a>
+    <a href="{% url 'academics:create_user' %}" class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+        <i class="bi bi-person-plus-fill mr-2"></i> Create User Account
+    </a>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="p-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Registered Schools</h2>
+            
+            <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                    <table class="min-w-full divide-y divide-gray-300">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Name</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Student Code</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Teacher Code</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Admin Code</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Users</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Created</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% for school in schools %}
+                                <tr>
+                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium sm:pl-0">
+                                        <a href="{% url 'academics:manage_school' school.pk %}" class="text-green-600 hover:text-green-900">{{ school.name }}</a>
+                                    </td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-gray-500">{{ school.school_code }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-gray-500">{{ school.teacher_code|default:"—" }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-gray-500">{{ school.admin_code|default:"—" }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ school.user_count }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ school.created_at|date:"M d, Y" }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="6" class="py-4 pl-4 pr-3 text-sm text-gray-500 sm:pl-0 italic">No schools registered yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="p-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Recent Users</h2>
+            
+            <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                    <table class="min-w-full divide-y divide-gray-300">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Name</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Role</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">School</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% for u in users %}
+                                <tr>
+                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-0">
+                                        {{ u.get_full_name|default:u.username }}<br>
+                                        <span class="text-xs text-gray-500 font-normal">{{ u.email }}</span>
+                                    </td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ u.profile.get_role_display }}</td>
+                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ u.profile.school.name|default:"-" }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="3" class="py-4 pl-4 pr-3 text-sm text-gray-500 sm:pl-0 italic">No users registered yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

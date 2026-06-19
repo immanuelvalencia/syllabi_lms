@@ -19,6 +19,7 @@ from .models import (
     CourseMaterial,
     CourseSection,
     Enrollment,
+    GeneratedLessonPlan,
     Profile,
     SectionEnrollment,
     Submission,
@@ -32,10 +33,11 @@ def _profile_for(user):
 
 def _can_manage_course(user, course):
     profile = _profile_for(user)
-    return course.instructor_id == user.id or profile.role in {
-        Profile.Role.ACADEMIC_ADMIN,
-        Profile.Role.PLATFORM_ADMIN,
-    }
+    if profile.role == Profile.Role.PLATFORM_ADMIN:
+        return True
+    if profile.role == Profile.Role.ACADEMIC_ADMIN and course.school_id == profile.school_id:
+        return True
+    return course.instructor_id == user.id
 
 
 def _can_view_course(user, course):
@@ -129,7 +131,9 @@ def dashboard(request):
     profile = _profile_for(request.user)
     if profile.role == Profile.Role.INSTRUCTOR:
         return redirect("academics:instructor_dashboard")
-    if profile.role in {Profile.Role.ACADEMIC_ADMIN, Profile.Role.PLATFORM_ADMIN}:
+    if profile.role == Profile.Role.PLATFORM_ADMIN:
+        return redirect("academics:platform_admin_dashboard")
+    if profile.role == Profile.Role.ACADEMIC_ADMIN:
         return redirect("academics:academic_admin_dashboard")
     return redirect("academics:student_dashboard")
 
@@ -218,6 +222,7 @@ def create_teacher_course(request):
             course = form.save(commit=False)
             course.instructor = request.user
             course.department = profile.department
+            course.school = profile.school
             course.save()
             messages.success(request, "Course created. Add sections, schedule, and students next.")
             return redirect(course.get_absolute_url())
@@ -238,14 +243,15 @@ def academic_admin_dashboard(request):
         messages.error(request, "This dashboard is limited to academic administrators.")
         return redirect("academics:dashboard")
 
-    enrollments = Enrollment.objects.select_related("course", "student")
-    courses = Course.objects.select_related("instructor")
+    school = profile.school
+    enrollments = Enrollment.objects.filter(course__school=school).select_related("course", "student")
+    courses = Course.objects.filter(school=school).select_related("instructor")
     ai_requests = AiToolRequest.objects.select_related("user")[:8]
 
     context = {
         "profile": profile,
-        "total_students": Profile.objects.filter(role=Profile.Role.STUDENT).count(),
-        "total_instructors": Profile.objects.filter(role=Profile.Role.INSTRUCTOR).count(),
+        "total_students": Profile.objects.filter(role=Profile.Role.STUDENT, school=school).count(),
+        "total_instructors": Profile.objects.filter(role=Profile.Role.INSTRUCTOR, school=school).count(),
         "total_courses": courses.count(),
         "at_risk_count": enrollments.filter(progress_percent__lt=45).count(),
         "course_activity": courses.annotate(
@@ -641,3 +647,306 @@ def ai_tasks_list(request):
     tasks = request.user.ai_tool_requests.all()
     profile = request.user.profile if hasattr(request.user, "profile") else None
     return render(request, "academics/ai_tasks_list.html", {"tasks": tasks, "profile": profile})
+
+from django.contrib.auth import get_user_model, login
+from .forms import SchoolForm, UserCreationForm, SignupForm
+from .models import School
+
+def _can_manage_platform(user):
+    return user.is_authenticated and hasattr(user, 'profile') and user.profile.role == Profile.Role.PLATFORM_ADMIN
+
+def signup_view(request):
+    if request.method == "POST":
+        form = SignupForm(request.POST)
+        if form.is_valid():
+            code = form.cleaned_data["school_code"]
+            role = form.cleaned_data["role"]
+            # Resolve the school based on which code was used
+            if role == Profile.Role.STUDENT:
+                school = School.objects.get(school_code=code)
+            elif role == Profile.Role.INSTRUCTOR:
+                school = School.objects.get(teacher_code=code)
+            else:
+                school = School.objects.get(admin_code=code)
+
+            User = get_user_model()
+            if User.objects.filter(email=form.cleaned_data["email"]).exists():
+                messages.error(request, "Email already in use.")
+                return render(request, "registration/signup.html", {"form": form})
+
+            user = User.objects.create_user(
+                username=form.cleaned_data["email"],
+                email=form.cleaned_data["email"],
+                password=form.cleaned_data["password"],
+                first_name=form.cleaned_data["first_name"],
+                last_name=form.cleaned_data["last_name"],
+            )
+            Profile.objects.create(
+                user=user,
+                role=role,
+                school=school
+            )
+            login(request, user)
+            messages.success(request, f"Welcome! You have joined {school.name}.")
+            return redirect("academics:dashboard")
+    else:
+        form = SignupForm()
+    return render(request, "registration/signup.html", {"form": form})
+
+@login_required
+def platform_admin_dashboard(request):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+
+    schools = School.objects.all().order_by("-created_at").annotate(
+        user_count=Count("profiles")
+    )
+    User = get_user_model()
+    users = User.objects.filter(profile__isnull=False).select_related("profile", "profile__school").order_by("-date_joined")
+
+    return render(request, "academics/dashboards/platform_admin.html", {
+        "profile": _profile_for(request.user),
+        "schools": schools,
+        "users": users
+    })
+
+@login_required
+def manage_school(request, school_id):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+    school = get_object_or_404(School, pk=school_id)
+    profiles = Profile.objects.filter(school=school).select_related("user").order_by("role", "user__last_name")
+    role_choices = [
+        (Profile.Role.STUDENT, "Student"),
+        (Profile.Role.INSTRUCTOR, "Teacher/Instructor"),
+        (Profile.Role.ACADEMIC_ADMIN, "Academic Admin"),
+    ]
+    return render(request, "academics/platform_admin/manage_school.html", {
+        "profile": _profile_for(request.user),
+        "school": school,
+        "profiles": profiles,
+        "role_choices": role_choices,
+    })
+
+@login_required
+def edit_school(request, school_id):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+    school = get_object_or_404(School, pk=school_id)
+    if request.method == "POST":
+        form = SchoolForm(request.POST, instance=school)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "School updated successfully.")
+            return redirect("academics:manage_school", school_id=school.pk)
+    else:
+        form = SchoolForm(instance=school)
+    return render(request, "academics/platform_admin/edit_school.html", {
+        "profile": _profile_for(request.user),
+        "form": form,
+        "school": school,
+    })
+
+@login_required
+def delete_school(request, school_id):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+    school = get_object_or_404(School, pk=school_id)
+    if request.method == "POST":
+        school.delete()
+        messages.success(request, f"School '{school.name}' has been deleted.")
+        return redirect("academics:platform_admin_dashboard")
+    return render(request, "academics/platform_admin/delete_school.html", {
+        "profile": _profile_for(request.user),
+        "school": school,
+    })
+
+@login_required
+def remove_user_from_school(request, school_id, user_id):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+    if request.method == "POST":
+        profile = get_object_or_404(Profile, user_id=user_id, school_id=school_id)
+        profile.school = None
+        profile.save()
+        messages.success(request, "User removed from school.")
+    return redirect("academics:manage_school", school_id=school_id)
+
+@login_required
+def change_user_role(request, school_id, user_id):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+    if request.method == "POST":
+        profile = get_object_or_404(Profile, user_id=user_id, school_id=school_id)
+        new_role = request.POST.get("role")
+        allowed = [Profile.Role.STUDENT, Profile.Role.INSTRUCTOR, Profile.Role.ACADEMIC_ADMIN]
+        if new_role in allowed:
+            profile.role = new_role
+            profile.save()
+            messages.success(request, f"Role updated to {profile.get_role_display()}.")
+        else:
+            messages.error(request, "Invalid role.")
+    return redirect("academics:manage_school", school_id=school_id)
+
+@login_required
+def create_school(request):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+
+    if request.method == "POST":
+        form = SchoolForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "School created successfully.")
+            return redirect("academics:platform_admin_dashboard")
+    else:
+        form = SchoolForm()
+    return render(request, "academics/platform_admin/create_school.html", {
+        "profile": _profile_for(request.user),
+        "form": form,
+    })
+
+@login_required
+def create_user(request):
+    if not _can_manage_platform(request.user):
+        raise PermissionDenied
+
+    if request.method == "POST":
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            User = get_user_model()
+            if User.objects.filter(email=form.cleaned_data["email"]).exists():
+                messages.error(request, "Email already in use.")
+            else:
+                user = User.objects.create_user(
+                    username=form.cleaned_data["email"],
+                    email=form.cleaned_data["email"],
+                    password=form.cleaned_data["password"],
+                    first_name=form.cleaned_data["first_name"],
+                    last_name=form.cleaned_data["last_name"],
+                )
+                Profile.objects.create(
+                    user=user,
+                    role=form.cleaned_data["role"],
+                    school=form.cleaned_data["school"]
+                )
+                messages.success(request, f"Account created for {user.email}.")
+                return redirect("academics:platform_admin_dashboard")
+    else:
+        form = UserCreationForm()
+    return render(request, "academics/platform_admin/create_user.html", {
+        "profile": _profile_for(request.user),
+        "form": form,
+    })
+
+@login_required
+def ai_lesson_plan(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    if request.method == "POST":
+        topic = request.POST.get("topic", "")
+        modules = request.POST.get("modules", "1")
+        duration = request.POST.get("duration", "")
+        instructions = request.POST.get("instructions", "")
+        materials_ids = request.POST.getlist("materials")
+
+        duration_val = int(duration) if duration.isdigit() else None
+        modules_val = int(modules) if modules.isdigit() else 1
+        title = topic if topic else f"Lesson Plan - {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+
+        plan = GeneratedLessonPlan.objects.create(
+            course=course,
+            author=request.user,
+            title=title,
+            topic=topic,
+            modules=modules_val,
+            duration_minutes=duration_val,
+            content="",
+            status=GeneratedLessonPlan.Status.QUEUED
+        )
+        
+        from .tasks import generate_lesson_plan_task
+        generate_lesson_plan_task.delay(
+            plan.id,
+            materials_ids,
+            topic,
+            modules,
+            duration,
+            instructions
+        )
+
+        messages.info(request, "Lesson plan generation started in the background.")
+        return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=plan.id)
+
+    materials = course.materials.all().order_by("-created_at")
+    return render(request, "academics/ai_lesson_plan.html", {
+        "course": course,
+        "materials": materials,
+        "profile": _profile_for(request.user),
+    })
+
+@login_required
+def lesson_plan_list(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    plans = course.generated_lesson_plans.all()
+    return render(request, "academics/lesson_plan_list.html", {
+        "course": course,
+        "plans": plans,
+        "profile": _profile_for(request.user),
+    })
+
+@login_required
+def lesson_plan_detail(request, slug, plan_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    plan = get_object_or_404(GeneratedLessonPlan, pk=plan_id, course=course)
+
+    if request.method == "POST":
+        content = request.POST.get("content")
+        title = request.POST.get("title")
+        if content and title:
+            plan.content = content
+            plan.title = title
+            plan.save()
+            messages.success(request, "Lesson plan updated successfully.")
+            return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=plan.id)
+
+    return render(request, "academics/lesson_plan_detail.html", {
+        "course": course,
+        "plan": plan,
+        "profile": _profile_for(request.user),
+    })
+
+@login_required
+def lesson_plan_delete(request, slug, plan_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    plan = get_object_or_404(GeneratedLessonPlan, pk=plan_id, course=course)
+    
+    if request.method == "POST":
+        plan.delete()
+        messages.success(request, "Lesson plan deleted.")
+        return redirect("academics:lesson_plan_list", slug=course.slug)
+    
+    # Can render a confirmation or redirect back
+    return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=plan.id)
+
+@login_required
+def ai_activity_sheets(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    return render(request, "academics/ai_activity_sheets.html", {
+        "course": course,
+        "profile": _profile_for(request.user),
+    })
+

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Create User | Syllabi LMS{% endblock %}
+{% block page_title %}Create User Account{% endblock %}
+
+{% block content %}
+<div style="max-width:640px; margin:0 auto;">
+
+  <div class="mb-6">
+    <a href="{% url 'academics:platform_admin_dashboard' %}" class="inline-flex items-center gap-3 text-sm font-medium text-gray-500 hover:text-gray-900">
+      <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm" style="border:1px solid #e5e7eb;">
+
+    <div class="p-6" style="border-bottom:1px solid #f3f4f6;">
+      <h2 style="font-size:1.1rem; font-weight:600; color:#111827; margin:0 0 4px 0;">New User Details</h2>
+      <p style="font-size:0.875rem; color:#6b7280; margin:0;">Provision a new account and assign it to a school.</p>
+    </div>
+
+    <form method="post" class="p-6 space-y-6">
+      {% csrf_token %}
+
+      {% if messages %}
+        {% for message in messages %}
+          <div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:12px 16px; display:flex; align-items:flex-start; gap:10px;">
+            <i class="bi bi-x-circle-fill" style="color:#ef4444; margin-top:2px; flex-shrink:0;"></i>
+            <div style="font-size:0.875rem; color:#b91c1c;">{{ message }}</div>
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <label for="id_first_name" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            First Name <span style="color:#ef4444;">*</span>
+          </label>
+          <input type="text" name="first_name" id="id_first_name" value="{{ form.first_name.value|default:'' }}"
+            placeholder="Juan"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none;"
+            onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+          {% if form.first_name.errors %}<p style="margin-top:4px; font-size:0.8rem; color:#dc2626;">{{ form.first_name.errors|striptags }}</p>{% endif %}
+        </div>
+        <div>
+          <label for="id_last_name" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            Last Name <span style="color:#ef4444;">*</span>
+          </label>
+          <input type="text" name="last_name" id="id_last_name" value="{{ form.last_name.value|default:'' }}"
+            placeholder="dela Cruz"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none;"
+            onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+          {% if form.last_name.errors %}<p style="margin-top:4px; font-size:0.8rem; color:#dc2626;">{{ form.last_name.errors|striptags }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div>
+        <label for="id_email" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+          Email Address <span style="color:#ef4444;">*</span>
+        </label>
+        <input type="email" name="email" id="id_email" value="{{ form.email.value|default:'' }}"
+          placeholder="juan@school.edu"
+          style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none;"
+          onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+        {% if form.email.errors %}<p style="margin-top:4px; font-size:0.8rem; color:#dc2626;">{{ form.email.errors|striptags }}</p>{% endif %}
+      </div>
+
+      <div>
+        <label for="id_password" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+          Initial Password <span style="color:#ef4444;">*</span>
+        </label>
+        <input type="password" name="password" id="id_password"
+          placeholder="Set a secure password"
+          style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none;"
+          onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+        <p style="margin-top:4px; font-size:0.78rem; color:#9ca3af;">The user can change this after logging in.</p>
+        {% if form.password.errors %}<p style="margin-top:2px; font-size:0.8rem; color:#dc2626;">{{ form.password.errors|striptags }}</p>{% endif %}
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <label for="id_role" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            Role <span style="color:#ef4444;">*</span>
+          </label>
+          <select name="role" id="id_role"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none; appearance:auto;">
+            {% for value, label in form.role.field.choices %}
+              <option value="{{ value }}" {% if form.role.value == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% if form.role.errors %}<p style="margin-top:4px; font-size:0.8rem; color:#dc2626;">{{ form.role.errors|striptags }}</p>{% endif %}
+        </div>
+        <div>
+          <label for="id_school" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            Assign to School <span style="color:#ef4444;">*</span>
+          </label>
+          <select name="school" id="id_school"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none; appearance:auto;">
+            <option value="">— Select a school —</option>
+            {% for school in form.school.field.queryset %}
+              <option value="{{ school.pk }}" {% if form.school.value == school.pk|stringformat:"s" %}selected{% endif %}>{{ school.name }}</option>
+            {% endfor %}
+          </select>
+          {% if form.school.errors %}<p style="margin-top:4px; font-size:0.8rem; color:#dc2626;">{{ form.school.errors|striptags }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; padding-top:16px; border-top:1px solid #f3f4f6;">
+        <a href="{% url 'academics:platform_admin_dashboard' %}"
+           style="display:inline-flex; align-items:center; justify-content:center; border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:10px 20px; font-size:0.875rem; font-weight:500; color:#374151; text-decoration:none;"
+           onmouseover="this.style.background='#f9fafb';"
+           onmouseout="this.style.background='#fff';">
+          Cancel
+        </a>
+        <button type="submit"
+                class="rounded-lg bg-green-600 text-white hover:bg-green-500"
+                style="display:inline-flex; align-items:center; justify-content:center; padding:10px 20px; font-size:0.875rem; font-weight:600; border:none; cursor:pointer;">
+          <i class="bi bi-person-check-fill" style="margin-right:8px;"></i>
+          Create Account
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

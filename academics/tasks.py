@@ -63,10 +63,48 @@ def build_ai_response(ai_request):
     return templates.get(ai_request.tool_type, f"AI response queued for: {prompt}")
 
 @shared_task
+def generate_lesson_plan_task(plan_id, materials_ids, topic, modules, duration, instructions):
+    from academics.models import GeneratedLessonPlan
+    from django.utils import timezone
+    try:
+        plan = GeneratedLessonPlan.objects.get(id=plan_id)
+        plan.status = GeneratedLessonPlan.Status.RUNNING
+        plan.save(update_fields=["status"])
+        
+        from academics.services import generate_lesson_plan_content
+        content = generate_lesson_plan_content(
+            course=plan.course,
+            materials_ids=materials_ids,
+            topic=topic,
+            modules=modules,
+            duration=duration,
+            instructions=instructions
+        )
+        
+        if not plan.title:
+            title = topic if topic else f"Lesson Plan - {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+            plan.title = title
+            
+        plan.content = content
+        plan.status = GeneratedLessonPlan.Status.COMPLETED
+        plan.save(update_fields=["title", "content", "status"])
+        return content
+    except Exception as e:
+        try:
+            plan = GeneratedLessonPlan.objects.get(id=plan_id)
+            plan.status = GeneratedLessonPlan.Status.FAILED
+            plan.error_message = str(e)
+            plan.save(update_fields=["status", "error_message"])
+        except Exception:
+            pass
+        raise e
+
+@shared_task
 def process_material_rag(material_id, ai_request_id=None):
     import os
     import tiktoken
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     from academics.models import CourseMaterial, DocumentChunk, AiToolRequest
     from PyPDF2 import PdfReader
     from docx import Document
@@ -151,7 +189,7 @@ def process_material_rag(material_id, ai_request_id=None):
             ai_request.save(update_fields=['status', 'error_message', 'completed_at'])
         return "GEMINI_API_KEY missing"
 
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
     
     try:
         DocumentChunk.objects.filter(material=material).delete()
@@ -160,19 +198,19 @@ def process_material_rag(material_id, ai_request_id=None):
         for j in range(0, len(chunks), batch_size):
             batch_chunks = chunks[j:j+batch_size]
             
-            result = genai.embed_content(
-                model="models/gemini-embedding-2",
-                content=batch_chunks,
-                task_type="retrieval_document"
+            result = client.models.embed_content(
+                model="gemini-embedding-2",
+                contents=batch_chunks,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
             
             chunk_objects = []
-            for k, embedding in enumerate(result['embedding']):
+            for k, embedding in enumerate(result.embeddings):
                 chunk_objects.append(
                     DocumentChunk(
                         material=material,
                         content=batch_chunks[k],
-                        embedding=embedding,
+                        embedding=embedding.values,
                         chunk_index=j + k
                     )
                 )

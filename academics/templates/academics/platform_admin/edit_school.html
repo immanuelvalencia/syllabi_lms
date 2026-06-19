@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ school.name }} | Syllabi LMS{% endblock %}
+{% block page_title %}Edit School{% endblock %}
+
+{% block content %}
+<div style="max-width:640px; margin:0 auto;">
+
+  <div class="mb-6">
+    <a href="{% url 'academics:manage_school' school.pk %}" style="font-size:0.875rem; font-weight:500; color:#6b7280; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+      <i class="bi bi-arrow-left"></i> Back to {{ school.name }}
+    </a>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm" style="border:1px solid #e5e7eb;">
+    <div class="p-6" style="border-bottom:1px solid #f3f4f6;">
+      <h2 style="font-size:1.1rem; font-weight:600; color:#111827; margin:0 0 4px 0;">Edit School Details</h2>
+      <p style="font-size:0.875rem; color:#6b7280; margin:0;">Update the name or access codes for <strong>{{ school.name }}</strong>.</p>
+    </div>
+
+    <form method="post" class="p-6 space-y-6">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:12px 16px; font-size:0.875rem; color:#b91c1c;">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <!-- School Name -->
+      <div>
+        <label for="id_name" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+          School Name <span style="color:#ef4444;">*</span>
+        </label>
+        <input type="text" name="name" id="id_name" value="{{ form.name.value|default:'' }}"
+          style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; background:#fff; outline:none;"
+          onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+        {% if form.name.errors %}<p style="margin-top:4px; font-size:0.8rem; color:#dc2626;">{{ form.name.errors|striptags }}</p>{% endif %}
+      </div>
+
+      <div style="border-top:1px solid #f3f4f6; padding-top:20px;">
+        <p style="font-size:0.8rem; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 16px 0;">Access Codes</p>
+
+        <!-- Student Code -->
+        <div style="margin-bottom:16px;">
+          <label for="id_school_code" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            <i class="bi bi-mortarboard" style="color:#6b7280; margin-right:4px;"></i> Student Code <span style="color:#ef4444;">*</span>
+          </label>
+          <input type="text" name="school_code" id="id_school_code" value="{{ form.school_code.value|default:'' }}"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; font-family:monospace; background:#fff; outline:none;"
+            onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+          <p style="margin-top:4px; font-size:0.78rem; color:#9ca3af;">Students enter this code when signing up.</p>
+          {% if form.school_code.errors %}<p style="margin-top:2px; font-size:0.8rem; color:#dc2626;">{{ form.school_code.errors|striptags }}</p>{% endif %}
+        </div>
+
+        <!-- Teacher Code -->
+        <div style="margin-bottom:16px;">
+          <label for="id_teacher_code" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            <i class="bi bi-person-workspace" style="color:#6b7280; margin-right:4px;"></i> Teacher Code
+          </label>
+          <input type="text" name="teacher_code" id="id_teacher_code" value="{{ form.teacher_code.value|default:'' }}"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; font-family:monospace; background:#fff; outline:none;"
+            onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+          <p style="margin-top:4px; font-size:0.78rem; color:#9ca3af;">Teachers / Instructors enter this code when signing up.</p>
+          {% if form.teacher_code.errors %}<p style="margin-top:2px; font-size:0.8rem; color:#dc2626;">{{ form.teacher_code.errors|striptags }}</p>{% endif %}
+        </div>
+
+        <!-- Admin Code -->
+        <div>
+          <label for="id_admin_code" style="display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:6px;">
+            <i class="bi bi-shield-check" style="color:#6b7280; margin-right:4px;"></i> Academic Admin Code
+          </label>
+          <input type="text" name="admin_code" id="id_admin_code" value="{{ form.admin_code.value|default:'' }}"
+            style="display:block; width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; font-size:0.875rem; color:#111827; font-family:monospace; background:#fff; outline:none;"
+            onfocus="this.style.borderColor='#22c55e'; this.style.boxShadow='0 0 0 2px #bbf7d0';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none';">
+          <p style="margin-top:4px; font-size:0.78rem; color:#9ca3af;">Academic Admins enter this code when signing up.</p>
+          {% if form.admin_code.errors %}<p style="margin-top:2px; font-size:0.8rem; color:#dc2626;">{{ form.admin_code.errors|striptags }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; padding-top:16px; border-top:1px solid #f3f4f6;">
+        <a href="{% url 'academics:manage_school' school.pk %}"
+           style="display:inline-flex; align-items:center; border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:10px 20px; font-size:0.875rem; font-weight:500; color:#374151; text-decoration:none;"
+           onmouseover="this.style.background='#f9fafb';" onmouseout="this.style.background='#fff';">
+          Cancel
+        </a>
+        <button type="submit"
+                class="rounded-lg bg-green-600 text-white hover:bg-green-500"
+                style="display:inline-flex; align-items:center; gap:6px; padding:10px 20px; font-size:0.875rem; font-weight:600; border:none; cursor:pointer;">
+          <i class="bi bi-check-lg"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

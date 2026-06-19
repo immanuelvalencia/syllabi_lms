@@ -17,7 +17,8 @@ def _send_ai_task(request_id):
         )
 
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pgvector.django import L2Distance
 from .models import DocumentChunk
 
@@ -26,15 +27,15 @@ def generate_rag_response(course_id, prompt):
     if not api_key:
         return "Error: GEMINI_API_KEY environment variable is not configured."
         
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
     
     try:
-        result = genai.embed_content(
-            model="models/gemini-embedding-2",
-            content=prompt,
-            task_type="retrieval_query",
+        result = client.models.embed_content(
+            model="gemini-embedding-2",
+            contents=prompt,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
         )
-        prompt_embedding = result['embedding']
+        prompt_embedding = result.embeddings[0].values
     except Exception as e:
         return f"Error generating embedding for prompt: {str(e)}"
         
@@ -56,13 +57,60 @@ def generate_rag_response(course_id, prompt):
     )
     
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=system_prompt
-        )
-        response = model.generate_content(
-            f"Course Materials Context:\n{context_text}\n\nUser Request: {prompt}"
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Course Materials Context:\n{context_text}\n\nUser Request: {prompt}",
+            config=types.GenerateContentConfig(system_instruction=system_prompt)
         )
         return response.text
     except Exception as e:
         return f"Error generating response: {str(e)}"
+
+def generate_lesson_plan_content(course, materials_ids, topic, modules, duration, instructions):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return "Error: GEMINI_API_KEY environment variable is not configured."
+        
+    client = genai.Client(api_key=api_key)
+    
+    # If materials are selected, fetch their chunks
+    context_text = ""
+    if materials_ids:
+        chunks = DocumentChunk.objects.filter(material_id__in=materials_ids)
+        # We can just join them up, or if there's too many, limit them.
+        # Since it's for lesson planning, we might want the whole content or a substantial amount.
+        # For simplicity, we just concatenate all chunks of the selected materials.
+        context_text = "\n\n---\n\n".join([chunk.content for chunk in chunks])
+    
+    if not context_text:
+        context_text = "No specific course materials provided for context."
+        
+    system_prompt = (
+        "You are an expert curriculum designer and teaching assistant. "
+        "Your task is to create a detailed, engaging, and structured lesson plan based on the user's inputs. "
+        "IMPORTANT: You must return the output STRICTLY in Markdown format, with appropriate headings, bullet points, and formatting."
+    )
+    
+    prompt = f"""
+Course: {course.title}
+Course Description: {course.description}
+Topic / Focus Area: {topic}
+Number of Modules/Sections: {modules}
+Estimated Duration: {duration} minutes
+Additional Instructions: {instructions}
+
+Course Materials Context:
+{context_text}
+
+Please generate the lesson plan now.
+"""
+    
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=system_prompt)
+        )
+        return response.text
+    except Exception as e:
+        return f"Error generating lesson plan: {str(e)}"

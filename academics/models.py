@@ -12,6 +12,16 @@ def generate_short_id():
     return get_random_string(10)
 
 
+class School(models.Model):
+    name = models.CharField(max_length=200)
+    school_code = models.CharField(max_length=64, unique=True, help_text="Code for student self-registration")
+    teacher_code = models.CharField(max_length=64, unique=True, null=True, blank=True, help_text="Code for teacher/instructor self-registration")
+    admin_code = models.CharField(max_length=64, unique=True, null=True, blank=True, help_text="Code for academic admin self-registration")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
 class Profile(models.Model):
     class Role(models.TextChoices):
         STUDENT = "student", "Student"
@@ -20,6 +30,7 @@ class Profile(models.Model):
         PLATFORM_ADMIN = "platform_admin", "Platform Admin"
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name='profiles', null=True, blank=True)
     role = models.CharField(max_length=32, choices=Role.choices, default=Role.STUDENT)
     department = models.CharField(max_length=120, blank=True)
     student_id = models.CharField(max_length=64, blank=True)
@@ -31,6 +42,7 @@ class Profile(models.Model):
 
 
 class Course(models.Model):
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name='courses', null=True, blank=True)
     public_id = models.CharField(max_length=36, default=generate_short_id, editable=False, unique=True)
     title = models.CharField(max_length=180)
     code = models.CharField(max_length=32, unique=True)
@@ -254,6 +266,31 @@ class AiToolRequest(models.Model):
 
     def __str__(self):
         return f"{self.get_tool_type_display()} for {self.user.username} ({self.status})"
+
+class GeneratedLessonPlan(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="generated_lesson_plans")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    content = models.TextField(blank=True)
+    topic = models.CharField(max_length=200, blank=True)
+    modules = models.PositiveIntegerField(default=1)
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
+    error_message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
 
 class CourseMaterial(models.Model):
     class CategoryChoices(models.TextChoices):

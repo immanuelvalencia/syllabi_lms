@@ -99,3 +99,76 @@ class CourseMaterialForm(forms.ModelForm):
                 field.widget.attrs.setdefault("class", "block w-full text-sm text-gray-900 border border-gray-300 rounded-md cursor-pointer bg-gray-50 focus:outline-none")
             else:
                 field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
+
+from .models import School
+
+class SchoolForm(forms.ModelForm):
+    class Meta:
+        model = School
+        fields = ["name", "school_code", "teacher_code", "admin_code"]
+        labels = {
+            "name": "School Name",
+            "school_code": "Student Code",
+            "teacher_code": "Teacher Code",
+            "admin_code": "Academic Admin Code",
+        }
+        help_texts = {
+            "school_code": "Students use this code to self-register.",
+            "teacher_code": "Teachers / Instructors use this code to self-register.",
+            "admin_code": "Academic Admins use this code to self-register.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
+
+class UserCreationForm(forms.Form):
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    email = forms.EmailField()
+    password = forms.CharField(widget=forms.PasswordInput)
+    role = forms.ChoiceField(choices=[
+        (Profile.Role.STUDENT, "Student"),
+        (Profile.Role.INSTRUCTOR, "Teacher/Instructor"),
+        (Profile.Role.ACADEMIC_ADMIN, "Academic Admin"),
+    ])
+    school = forms.ModelChoiceField(queryset=School.objects.all(), required=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
+
+class SignupForm(forms.Form):
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    email = forms.EmailField()
+    password = forms.CharField(widget=forms.PasswordInput)
+    school_code = forms.CharField(max_length=64, label="School / Access Code")
+    role = forms.ChoiceField(choices=[
+        (Profile.Role.STUDENT, "Student"),
+        (Profile.Role.INSTRUCTOR, "Teacher/Instructor"),
+        (Profile.Role.ACADEMIC_ADMIN, "Academic Admin"),
+    ])
+
+    def clean(self):
+        cleaned_data = super().clean()
+        code = cleaned_data.get('school_code')
+        role = cleaned_data.get('role')
+        if code and role:
+            if role == Profile.Role.STUDENT:
+                if not School.objects.filter(school_code=code).exists():
+                    self.add_error('school_code', "Invalid student code. Please check with your administrator.")
+            elif role == Profile.Role.INSTRUCTOR:
+                if not School.objects.filter(teacher_code=code).exists():
+                    self.add_error('school_code', "Invalid teacher code. Please check with your administrator.")
+            elif role == Profile.Role.ACADEMIC_ADMIN:
+                if not School.objects.filter(admin_code=code).exists():
+                    self.add_error('school_code', "Invalid academic admin code. Please check with your administrator.")
+        return cleaned_data
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
