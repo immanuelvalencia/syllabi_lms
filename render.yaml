@@ -4,7 +4,7 @@ services:
     name: syllabi-web
     env: docker
     plan: free
-    dockerCommand: sh start.sh
+    dockerCommand: '/bin/sh -c "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --threads 2"'
     envVars:
       - key: DATABASE_URL
         sync: false
