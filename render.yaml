@@ -32,6 +32,7 @@ services:
         fromService:
           type: redis
           name: syllabi-redis
+          property: connectionString
   # The Celery background worker
   - type: worker
     name: syllabi-worker
