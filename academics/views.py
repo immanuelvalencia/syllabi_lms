@@ -336,6 +336,14 @@ def course_detail(request, slug):
                 messages.success(request, "Material uploaded.")
                 return redirect(course.get_absolute_url())
 
+    if can_manage:
+        sections = course.sections.all()
+    else:
+        sections = [
+            section for section in course.sections.all()
+            if any(se.student_id == request.user.id for se in section.section_enrollments.all())
+        ]
+
     ai_requests = AiToolRequest.objects.filter(
         user=request.user,
         metadata__course_public_id=str(course.public_id),
@@ -343,6 +351,7 @@ def course_detail(request, slug):
     course_analytics = _build_course_analytics(course, request.user)
     context = {
         "course": course,
+        "sections": sections,
         "profile": profile,
         "can_manage": can_manage,
         "course_analytics": course_analytics,
@@ -365,7 +374,7 @@ def course_analytics_pdf(request, slug):
         ),
         slug__iexact=slug,
     )
-    if not _can_view_course(request.user, course):
+    if not _can_manage_course(request.user, course):
         raise PermissionDenied
 
     section_ids = None
@@ -512,6 +521,11 @@ def section_detail(request, slug, section_id):
     )
     profile = _profile_for(request.user)
     can_manage = _can_manage_course(request.user, course)
+    
+    if not can_manage:
+        is_enrolled = any(se.student_id == request.user.id for se in section.section_enrollments.all())
+        if not is_enrolled:
+            raise PermissionDenied
     
     if request.method == "POST":
         if not can_manage:
