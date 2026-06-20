@@ -66,22 +66,100 @@
     </div>
 </section>
 
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
+    <div class="p-6 sm:p-8">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Course Files</h2>
+            {% if can_manage %}
+                <button @click="uploadModalOpen = true" class="inline-flex h-9 items-center justify-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                    <i class="bi bi-upload"></i> Upload file
+                </button>
+            {% endif %}
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for material in course.materials.all %}
+                <article class="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="text-sm font-semibold text-gray-900 truncate pr-4" title="{{ material.display_name }}">{{ material.display_name }}</h3>
+                            {% if material.material_type == "pdf" %}
+                                <i class="bi bi-file-earmark-pdf text-red-500 text-xl"></i>
+                            {% elif material.material_type == "video" %}
+                                <i class="bi bi-file-earmark-play text-blue-500 text-xl"></i>
+                            {% elif material.material_type == "presentation" %}
+                                <i class="bi bi-file-earmark-slides text-yellow-500 text-xl"></i>
+                            {% elif material.material_type == "image" %}
+                                <i class="bi bi-file-image text-green-500 text-xl"></i>
+                            {% else %}
+                                <i class="bi bi-file-earmark text-gray-400 text-xl"></i>
+                            {% endif %}
+                        </div>
+                        <div class="mb-4 flex items-center gap-2">
+                            <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ material.get_category_display }}</span>
+                            <span class="text-xs text-gray-500">{{ material.created_at|date:"M j, Y" }}</span>
+                        </div>
+                        <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100 flex-wrap gap-2">
+                            <div class="flex gap-2">
+                                <button @click="viewerModalOpen = true; viewerUrl = '{{ material.file.url }}'; viewerType = '{{ material.material_type }}'; viewerTitle = '{{ material.display_name }}'" type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-semibold text-green-600 hover:bg-green-100">
+                                    View
+                                </button>
+                                <a href="{{ material.file.url }}" download class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                                {% if can_manage %}
+                                    <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="inline-block" onsubmit="return confirm('Delete this material?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                            {% if can_manage %}
+                                <div class="flex items-center">
+                                    {% if not material.is_processed %}
+                                    <form action="{% url 'academics:analyze_material' material.id %}" method="post" class="inline-block">
+                                        {% csrf_token %}
+                                        <button type="submit" class="inline-flex items-center gap-x-1.5 rounded-md bg-indigo-50 px-2.5 py-1.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-100 shadow-sm ring-1 ring-inset ring-indigo-200">
+                                            <i class="bi bi-magic"></i> Analyze
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-50 px-2.5 py-1.5 text-sm font-medium text-gray-500 ring-1 ring-inset ring-gray-200">
+                                        <i class="bi bi-check-circle-fill text-green-500"></i> Analyzed
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="col-span-full">
+                    <p class="text-gray-500 italic">No materials uploaded yet.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
 {% if can_manage %}
 <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
     <div class="p-6 sm:p-8">
         <div class="mb-6">
-            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Course Assistants</h2>
-            <p class="mt-1 text-sm text-gray-500">Accelerate your workflow with course-specific generation tools.</p>
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Planning Tools</h2>
+            <p class="mt-1 text-sm text-gray-500">Use these tools to plan out your course structure and activities.</p>
         </div>
 
-        <div class="grid gap-6 sm:grid-cols-2">
+        <div class="grid gap-6 sm:grid-cols-3">
             <!-- Lesson Plan Generator -->
-            <a href="{% url 'academics:ai_lesson_plan' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
+            <a href="{% url 'academics:lesson_plan_index' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
                 <div class="flex items-center gap-x-4">
                     <div class="flex h-12 w-12 flex-none items-center justify-center rounded-lg bg-green-50 group-hover:bg-green-100 transition">
                         <i class="bi bi-journal-text text-xl text-green-600"></i>
                     </div>
-                    <h3 class="text-lg font-semibold leading-8 tracking-tight text-gray-900 group-hover:text-green-600 transition">Generate Lesson Plan</h3>
+                    <h3 class="text-lg font-semibold leading-8 tracking-tight text-gray-900 group-hover:text-green-600 transition">Lesson Plans</h3>
                 </div>
                 <p class="mt-4 text-sm leading-6 text-gray-600">Create structured, engaging lesson plans based on your course materials and topics.</p>
                 <div class="mt-6 flex items-center text-sm font-medium text-green-600">
@@ -89,13 +167,27 @@
                 </div>
             </a>
 
-            <!-- Activity Sheets Generator -->
-            <a href="{% url 'academics:ai_activity_sheets' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:green-border-300">
+            <!-- Resource Assistant -->
+            <a href="{% url 'academics:resource_assistant_index' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
+                <div class="flex items-center gap-x-4">
+                    <div class="flex h-12 w-12 flex-none items-center justify-center rounded-lg bg-green-50 group-hover:bg-green-100 transition">
+                        <i class="bi bi-search text-xl text-green-600"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold leading-8 tracking-tight text-gray-900 group-hover:text-green-600 transition">Resource Assistant</h3>
+                </div>
+                <p class="mt-4 text-sm leading-6 text-gray-600">Automatically find relevant lecture videos and books from the internet.</p>
+                <div class="mt-6 flex items-center text-sm font-medium text-green-600">
+                    Get started <i class="bi bi-arrow-right ml-1"></i>
+                </div>
+            </a>
+
+            <!-- Class Activities Generator -->
+            <a href="{% url 'academics:activity_sheet_index' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
                 <div class="flex items-center gap-x-4">
                     <div class="flex h-12 w-12 flex-none items-center justify-center rounded-lg bg-green-50 group-hover:bg-green-100 transition">
                         <i class="bi bi-file-earmark-spreadsheet text-xl text-green-600"></i>
                     </div>
-                    <h3 class="text-lg font-semibold leading-8 tracking-tight text-gray-900 group-hover:text-green-600 transition">Generate Activity Sheets</h3>
+                    <h3 class="text-lg font-semibold leading-8 tracking-tight text-gray-900 group-hover:text-green-600 transition">Class Activities</h3>
                 </div>
                 <p class="mt-4 text-sm leading-6 text-gray-600">Quickly design custom worksheets and exercises tailored to your students' needs.</p>
                 <div class="mt-6 flex items-center text-sm font-medium text-green-600">
@@ -311,83 +403,7 @@
     </div>
 </section>
 
-<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
-    <div class="p-6 sm:p-8">
-        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <h2 class="text-2xl font-bold tracking-tight text-gray-900">Course Files</h2>
-            {% if can_manage %}
-                <button @click="uploadModalOpen = true" class="inline-flex h-9 items-center justify-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
-                    <i class="bi bi-upload"></i> Upload file
-                </button>
-            {% endif %}
-        </div>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {% for material in course.materials.all %}
-                <article class="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
-                    <div class="p-5 flex-1 flex flex-col">
-                        <div class="flex justify-between items-start mb-3">
-                            <h3 class="text-sm font-semibold text-gray-900 truncate pr-4" title="{{ material.display_name }}">{{ material.display_name }}</h3>
-                            {% if material.material_type == "pdf" %}
-                                <i class="bi bi-file-earmark-pdf text-red-500 text-xl"></i>
-                            {% elif material.material_type == "video" %}
-                                <i class="bi bi-file-earmark-play text-blue-500 text-xl"></i>
-                            {% elif material.material_type == "presentation" %}
-                                <i class="bi bi-file-earmark-slides text-yellow-500 text-xl"></i>
-                            {% elif material.material_type == "image" %}
-                                <i class="bi bi-file-image text-green-500 text-xl"></i>
-                            {% else %}
-                                <i class="bi bi-file-earmark text-gray-400 text-xl"></i>
-                            {% endif %}
-                        </div>
-                        <div class="mb-4 flex items-center gap-2">
-                            <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ material.get_category_display }}</span>
-                            <span class="text-xs text-gray-500">{{ material.created_at|date:"M j, Y" }}</span>
-                        </div>
-                        <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100 flex-wrap gap-2">
-                            <div class="flex gap-2">
-                                <button @click="viewerModalOpen = true; viewerUrl = '{{ material.file.url }}'; viewerType = '{{ material.material_type }}'; viewerTitle = '{{ material.display_name }}'" type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-semibold text-green-600 hover:bg-green-100">
-                                    View
-                                </button>
-                                <a href="{{ material.file.url }}" download class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
-                                    <i class="bi bi-download"></i>
-                                </a>
-                                {% if can_manage %}
-                                    <form action="{% url 'academics:delete_course_material' material.id %}" method="post" class="inline-block" onsubmit="return confirm('Delete this material?');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                {% endif %}
-                            </div>
-                            {% if can_manage %}
-                                <div class="flex items-center">
-                                    {% if not material.is_processed %}
-                                    <form action="{% url 'academics:analyze_material' material.id %}" method="post" class="inline-block">
-                                        {% csrf_token %}
-                                        <button type="submit" class="inline-flex items-center gap-x-1.5 rounded-md bg-indigo-50 px-2.5 py-1.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-100 shadow-sm ring-1 ring-inset ring-indigo-200">
-                                            <i class="bi bi-magic"></i> Analyze
-                                        </button>
-                                    </form>
-                                    {% else %}
-                                    <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-50 px-2.5 py-1.5 text-sm font-medium text-gray-500 ring-1 ring-inset ring-gray-200">
-                                        <i class="bi bi-check-circle-fill text-green-500"></i> Analyzed
-                                    </span>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </article>
-            {% empty %}
-                <div class="col-span-full">
-                    <p class="text-gray-500 italic">No materials uploaded yet.</p>
-                </div>
-            {% endfor %}
-        </div>
-    </div>
-</section>
+
 
 {% if can_manage %}
 <!-- Manage Course Modal -->

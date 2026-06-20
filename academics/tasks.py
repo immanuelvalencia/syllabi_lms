@@ -194,27 +194,23 @@ def process_material_rag(material_id, ai_request_id=None):
     try:
         DocumentChunk.objects.filter(material=material).delete()
         
-        batch_size = 100
-        for j in range(0, len(chunks), batch_size):
-            batch_chunks = chunks[j:j+batch_size]
-            
+        chunk_objects = []
+        for j, chunk_text in enumerate(chunks):
             result = client.models.embed_content(
                 model="gemini-embedding-2",
-                contents=batch_chunks,
+                contents=chunk_text,
                 config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
             
-            chunk_objects = []
-            for k, embedding in enumerate(result.embeddings):
-                chunk_objects.append(
-                    DocumentChunk(
-                        material=material,
-                        content=batch_chunks[k],
-                        embedding=embedding.values,
-                        chunk_index=j + k
-                    )
+            chunk_objects.append(
+                DocumentChunk(
+                    material=material,
+                    content=chunk_text,
+                    embedding=result.embeddings[0].values,
+                    chunk_index=j
                 )
-            DocumentChunk.objects.bulk_create(chunk_objects)
+            )
+        DocumentChunk.objects.bulk_create(chunk_objects)
             
     except Exception as e:
         print(f"Error embedding: {e}")
@@ -235,3 +231,231 @@ def process_material_rag(material_id, ai_request_id=None):
         ai_request.save(update_fields=['status', 'result', 'completed_at'])
         
     return f"Processed {len(chunks)} chunks"
+
+import json
+import re
+import requests
+from bs4 import BeautifulSoup
+from django.utils import timezone
+
+def extract_thumbnail_from_url(url):
+    try:
+        # YouTube specific fast extraction
+        if "youtube.com/watch" in url:
+            video_id_match = re.search(r"v=([a-zA-Z0-9_-]+)", url)
+            if video_id_match:
+                return f"https://img.youtube.com/vi/{video_id_match.group(1)}/hqdefault.jpg"
+        
+        # OpenGraph fallback
+        response = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+            og_image = soup.find("meta", property="og:image")
+            if og_image and og_image.get("content"):
+                return og_image["content"]
+    except Exception as e:
+        print(f"Error fetching thumbnail for {url}: {e}")
+    return None
+
+@shared_task
+def generate_resources_task(session_id, include_videos=True, include_books=True):
+    from academics.models import ResourceAssistantSession, SuggestedResource, ResourceTag
+    import os
+    import json
+    from ddgs import DDGS
+    from google import genai
+    from google.genai import types
+    
+    try:
+        session = ResourceAssistantSession.objects.get(id=session_id)
+        session.status = ResourceAssistantSession.Status.RUNNING
+        session.save(update_fields=["status"])
+        
+        topic = session.topic
+        
+        # 1. Gather Filters
+        filters = session.course.website_filters.all()
+        trusted = [f.url for f in filters if f.filter_type == 'trusted']
+        excluded = [f.url for f in filters if f.filter_type == 'excluded']
+        
+        trusted_query = " OR ".join([f"site:{d}" for d in trusted]) if trusted else ""
+        excluded_query = " ".join([f"-site:{d}" for d in excluded]) if excluded else ""
+        
+        query_modifier = ""
+        if trusted_query:
+            query_modifier += f" ({trusted_query})"
+        if excluded_query:
+            query_modifier += f" {excluded_query}"
+            
+        # 2. Gather Context
+        context_parts = []
+        if session.based_on_lesson_plan:
+            context_parts.append(f"LESSON PLAN CONTENT:\\n{session.based_on_lesson_plan.content}\\n")
+        
+        for mat in session.based_on_materials.all():
+            chunks = mat.chunks.order_by('chunk_index')[:5] # limit context size
+            text = "\\n".join([c.content for c in chunks])
+            context_parts.append(f"MATERIAL ({mat.title}):\\n{text}\\n")
+            
+        context_str = "\\n".join(context_parts)
+        
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is missing")
+            
+        client = genai.Client(api_key=api_key)
+        
+        # 3. Generate better search queries based on context
+        search_queries = []
+        if context_str:
+            prompt_queries = f"""
+            I need to find free resources for the topic: {topic}.
+            
+            Here is the context (Lesson Plan / Course Materials) for this topic:
+            {context_str}
+            
+            Based on the context, provide 4 highly specific search queries that would be typed into a search engine.
+"""
+            if include_videos and include_books:
+                prompt_queries += "\n- 2 queries to find lecture videos.\n- 2 queries to find free textbooks or readings."
+            elif include_videos:
+                prompt_queries += "\n- 4 queries to find lecture videos."
+            elif include_books:
+                prompt_queries += "\n- 4 queries to find free textbooks or readings."
+            else:
+                prompt_queries += "\n- 4 queries to find lecture videos.\n- 4 queries to find free textbooks or readings."
+                
+            prompt_queries += """
+            Make the queries concise (under 8 words). Do NOT include site: operators.
+            
+            Respond ONLY with a JSON array of strings.
+            """
+            try:
+                q_resp = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt_queries,
+                    config=types.GenerateContentConfig(temperature=0.2, response_mime_type="application/json")
+                )
+                try:
+                    search_queries = json.loads(q_resp.text)
+                except json.JSONDecodeError:
+                    cleaned = q_resp.text.strip()
+                    if cleaned.startswith("```json"): cleaned = cleaned[7:]
+                    if cleaned.endswith("```"): cleaned = cleaned[:-3]
+                    search_queries = json.loads(cleaned)
+            except Exception as e:
+                print(f"Error generating queries from context: {e}")
+                
+        if not search_queries:
+            search_queries = [
+                f"lecture video {topic}",
+                f"free textbook or reading {topic}"
+            ]
+            
+        # 4. Search DDGS
+        candidate_items = []
+        for q in search_queries:
+            full_query = f"{q}{query_modifier}"
+            try:
+                results = DDGS().text(full_query, max_results=5)
+                for res in results:
+                    candidate_items.append({
+                        "title": res.get("title", ""),
+                        "url": res.get("href", ""),
+                        "resource_type": "video" if "video" in q.lower() else "book",
+                        "description": res.get("body", "")
+                    })
+            except Exception as e:
+                print(f"Error DDGS query '{full_query}': {e}")
+                
+        # Deduplicate candidates
+        seen_urls = set()
+        unique_candidates = []
+        for item in candidate_items:
+            if item["url"] not in seen_urls:
+                seen_urls.add(item["url"])
+                unique_candidates.append(item)
+                
+        # 5. Gather existing tags
+        existing_tags = list(session.course.resource_tags.values_list('name', flat=True))
+        
+        # 6. Gemini Final Evaluation
+        prompt = f"""
+        You are an academic resource curator.
+        I have scraped {len(unique_candidates)} candidate web links.
+        
+        COURSE CONTEXT (Use this to judge relevance):
+        {context_str if context_str else "No specific context provided, rely on the topic alone."}
+        
+        CANDIDATE LINKS:
+        {json.dumps(unique_candidates, indent=2)}
+        
+        TASK:
+        1. Select the top most relevant results from the candidates. Select up to 5 videos and 5 books/readings if both are requested.
+        2. Improve their descriptions to be concise (1-2 sentences) and highlight why it's useful.
+        3. Assign up to 3 relevant tags to each resource. You may choose from existing tags: {existing_tags}. If none fit perfectly, you can invent new short tags.
+        
+        Respond ONLY with a JSON array of objects.
+        Each object must have:
+        - "title": (string)
+        - "url": (string)
+        - "resource_type": (string) "book" or "video"
+        - "description": (string)
+        - "tags": (array of strings)
+        """
+        
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                response_mime_type="application/json"
+            )
+        )
+        
+        try:
+            final_items = json.loads(response.text)
+        except json.JSONDecodeError:
+            cleaned = response.text.strip()
+            if cleaned.startswith("```json"): cleaned = cleaned[7:]
+            if cleaned.endswith("```"): cleaned = cleaned[:-3]
+            final_items = json.loads(cleaned)
+            
+        # 7. Save Resources
+        from academics.tasks import extract_thumbnail_from_url
+        for item in final_items:
+            url = item.get("url", "")
+            if not url: continue
+            
+            rtype = item.get("resource_type", "book").lower()
+            if rtype not in ["book", "video"]: rtype = "book"
+            
+            res_obj = SuggestedResource.objects.create(
+                session=session,
+                title=item.get("title", "Untitled")[:300],
+                url=url[:500],
+                resource_type=rtype,
+                thumbnail_url=extract_thumbnail_from_url(url)[:500] if extract_thumbnail_from_url(url) else None,
+                description=item.get("description", "")
+            )
+            
+            # Handle tags
+            tags_list = item.get("tags", [])
+            for t in tags_list:
+                tag_name = str(t).strip()[:50]
+                if tag_name:
+                    tag_obj, _ = ResourceTag.objects.get_or_create(course=session.course, name=tag_name)
+                    res_obj.tags.add(tag_obj)
+                    
+        session.status = ResourceAssistantSession.Status.COMPLETED
+        session.save(update_fields=["status", "updated_at"])
+        
+    except Exception as e:
+        try:
+            session = ResourceAssistantSession.objects.get(id=session_id)
+            session.status = ResourceAssistantSession.Status.FAILED
+            session.error_message = str(e)
+            session.save(update_fields=["status", "error_message", "updated_at"])
+        except Exception:
+            pass
+        raise e

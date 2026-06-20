@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block title %}Resource Assistant | {{ course.title }}{% endblock %}
+{% block page_title %}Resource Assistant{% endblock %}
+
+{% block page_header %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold leading-6 text-green-600 uppercase tracking-widest">{{ course.title }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Resource Assistant</h1>
+    </div>
+    <div class="flex gap-2">
+        <a href="{% url 'academics:ai_resource_assistant' course.slug %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            <i class="bi bi-arrow-left"></i>
+            Back to resource assistant
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-8 w-full max-w-7xl mx-auto" x-data="resourceApproval()">
+    
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xl font-semibold text-gray-900">{{ session.topic }}</h2>
+                    {% if session.status == 'queued' or session.status == 'running' %}
+                        <span class="inline-flex items-center gap-x-1.5 rounded-full px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 ring-1 ring-inset ring-blue-600/20">
+                            <svg class="h-1.5 w-1.5 fill-blue-500 animate-pulse" viewBox="0 0 6 6" aria-hidden="true"><circle cx="3" cy="3" r="3" /></svg>
+                            Searching...
+                        </span>
+                    {% elif session.status == 'failed' %}
+                        <span class="inline-flex items-center gap-x-1.5 rounded-full px-2 py-1 text-xs font-medium text-red-700 bg-red-50 ring-1 ring-inset ring-red-600/20">
+                            <svg class="h-1.5 w-1.5 fill-red-500" viewBox="0 0 6 6" aria-hidden="true"><circle cx="3" cy="3" r="3" /></svg>
+                            Failed
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center gap-x-1.5 rounded-full px-2 py-1 text-xs font-medium text-green-700 bg-green-50 ring-1 ring-inset ring-green-600/20">
+                            <i class="bi bi-check-circle-fill text-green-500"></i>
+                            Completed
+                        </span>
+                    {% endif %}
+                </div>
+                {% if session.trusted_sources %}
+                <p class="text-sm text-gray-500 mt-1"><i class="bi bi-funnel"></i> Sources: {{ session.trusted_sources }}</p>
+                {% endif %}
+            </div>
+            
+            <form action="{% url 'academics:resource_session_delete' course.slug session.id %}" method="post" onsubmit="return confirm('Are you sure you want to delete this session?');">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex items-center gap-x-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
+                    <i class="bi bi-trash3"></i> Delete Search Session
+                </button>
+            </form>
+        </div>
+
+        <div class="p-6 bg-gray-50/50">
+            <!-- Tabs -->
+            <div class="border-b border-gray-200 mb-6 flex justify-between items-center">
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button @click="activeTab = 'unapproved'" :class="activeTab === 'unapproved' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition flex items-center gap-2">
+                        Review <span class="bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs font-bold" x-text="unapprovedCount"></span>
+                    </button>
+                    <button @click="activeTab = 'approved'" :class="activeTab === 'approved' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition flex items-center gap-2">
+                        Approved <span class="bg-green-100 text-green-700 py-0.5 px-2 rounded-full text-xs font-bold" x-text="approvedCount"></span>
+                    </button>
+                </nav>
+            </div>
+
+            {% if session.status == 'queued' or session.status == 'running' %}
+            <div class="text-center py-12">
+                <div class="inline-block animate-spin text-green-600 text-4xl mb-4">
+                    <i class="bi bi-arrow-repeat"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900">Searching the internet...</h3>
+                <p class="text-gray-500 mt-2">The AI is currently browsing for the best lecture videos and books. Please refresh the page in a few moments.</p>
+                <button onclick="window.location.reload()" class="mt-4 text-green-600 font-semibold hover:text-green-500">Refresh Page</button>
+            </div>
+            {% elif session.status == 'failed' %}
+            <div class="rounded-md bg-red-50 p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-x-circle-fill text-red-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800">Search failed</h3>
+                        <div class="mt-2 text-sm text-red-700">
+                            <p>{{ session.error_message }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            
+            <!-- Unapproved Tab -->
+            <div x-show="activeTab === 'unapproved'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <template x-for="r in unapproved" :key="r.id">
+                    <div class="flex flex-col h-full rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md overflow-hidden hover:border-green-300 relative group">
+                        <!-- Thumbnail -->
+                        <div class="h-40 bg-gray-100 w-full relative flex-shrink-0">
+                            <template x-if="r.thumbnail_url">
+                                <img :src="r.thumbnail_url" class="w-full h-full object-cover" />
+                            </template>
+                            <template x-if="!r.thumbnail_url">
+                                <div class="w-full h-full flex items-center justify-center text-gray-300">
+                                    <i class="bi bi-image text-5xl"></i>
+                                </div>
+                            </template>
+                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                <a :href="r.url" target="_blank" class="text-white bg-white/20 hover:bg-white/40 backdrop-blur-sm px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition transform hover:scale-105">
+                                    <i class="bi bi-box-arrow-up-right"></i> Open Link
+                                </a>
+                            </div>
+                            <!-- Floating Resource Badge -->
+                            <div class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-white shadow-sm flex items-center gap-1.5 backdrop-blur-md" :class="r.resource_type === 'video' ? 'bg-red-600/90' : 'bg-blue-600/90'">
+                                <i :class="r.resource_type === 'video' ? 'bi bi-play-fill text-sm leading-none' : 'bi bi-book-half'"></i>
+                                <span x-text="r.resource_type"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Content -->
+                        <div class="p-5 flex-1 flex flex-col">
+                            <h3 class="font-bold text-gray-900 text-base leading-tight mb-2 group-hover:text-green-600 transition line-clamp-2" x-text="r.title"></h3>
+                            <p class="text-sm text-gray-500 mb-4 line-clamp-3 flex-1" x-text="r.description"></p>
+                            
+                            <!-- Tags -->
+                            <div class="mb-4 flex flex-wrap gap-1.5">
+                                <template x-for="tid in r.tags" :key="tid">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold text-white shadow-sm"
+                                          :style="`background-color: ${getTag(tid).color};`"
+                                          x-text="getTag(tid).name">
+                                    </span>
+                                </template>
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="mt-auto pt-4 border-t border-gray-100 flex gap-3">
+                                <button @click="toggleApproval(r)" class="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 shadow-sm ring-1 ring-inset ring-green-300 hover:bg-green-100 transition">
+                                    <i class="bi bi-check-circle-fill"></i> Approve
+                                </button>
+                                <button @click="rejectResource(r)" class="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition">
+                                    <i class="bi bi-x-circle-fill"></i> Reject
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="unapproved.length === 0" class="col-span-full py-16 text-center text-gray-500 bg-white rounded-xl border border-gray-100 shadow-sm">
+                    <i class="bi bi-check-circle text-5xl text-green-400 mb-3 block"></i>
+                    <h3 class="text-lg font-semibold text-gray-900">All caught up</h3>
+                    <p class="mt-1">No more resources to review from this session.</p>
+                </div>
+            </div>
+
+            <!-- Approved Tab -->
+            <div x-show="activeTab === 'approved'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" x-cloak>
+                <template x-for="r in approved" :key="r.id">
+                    <div class="flex flex-col h-full rounded-xl border border-green-200 bg-white shadow-sm transition hover:shadow-md overflow-hidden relative group hover:border-green-400">
+                        <!-- Thumbnail -->
+                        <div class="h-40 bg-gray-100 w-full relative flex-shrink-0">
+                            <template x-if="r.thumbnail_url">
+                                <img :src="r.thumbnail_url" class="w-full h-full object-cover" />
+                            </template>
+                            <template x-if="!r.thumbnail_url">
+                                <div class="w-full h-full flex items-center justify-center text-gray-300">
+                                    <i class="bi bi-image text-5xl"></i>
+                                </div>
+                            </template>
+                            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                <a :href="r.url" target="_blank" class="text-white bg-white/20 hover:bg-white/40 backdrop-blur-sm px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition transform hover:scale-105">
+                                    <i class="bi bi-box-arrow-up-right"></i> Open Link
+                                </a>
+                            </div>
+                            <div class="absolute top-3 right-3 bg-green-500/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-white flex items-center gap-1 shadow-sm">
+                                <i class="bi bi-check-circle-fill"></i> Approved
+                            </div>
+                        </div>
+                        
+                        <!-- Content -->
+                        <div class="p-5 flex-1 flex flex-col">
+                            <h3 class="font-bold text-gray-900 text-base leading-tight mb-2 group-hover:text-green-600 transition line-clamp-2" x-text="r.title"></h3>
+                            <p class="text-sm text-gray-500 mb-4 line-clamp-3 flex-1" x-text="r.description"></p>
+                            
+                            <!-- Tags management -->
+                            <div class="mb-4">
+                                <div class="flex flex-wrap gap-1.5 mb-2">
+                                    <template x-for="tid in r.tags" :key="tid">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold text-white shadow-sm" :style="`background-color: ${getTag(tid).color};`">
+                                            <span x-text="getTag(tid).name"></span>
+                                            <button @click="removeTag(r, tid)" class="hover:text-gray-200 transition"><i class="bi bi-x"></i></button>
+                                        </span>
+                                    </template>
+                                </div>
+                                <select @change="addTag(r, $event.target.value); $event.target.value=''" class="block w-full rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-xs sm:leading-6">
+                                    <option value="">+ Add tag</option>
+                                    <template x-for="tag in courseTags" :key="tag.id">
+                                        <option :value="tag.id" x-text="tag.name" x-show="!r.tags.includes(tag.id)"></option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <div class="mt-auto pt-4 border-t border-gray-100">
+                                <button @click="toggleApproval(r)" class="w-full flex items-center justify-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition">
+                                    <i class="bi bi-x"></i> Remove Approval
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="approved.length === 0" class="col-span-full py-16 text-center text-gray-500 bg-white rounded-xl border border-gray-100 shadow-sm">
+                    <i class="bi bi-bookmark text-5xl text-gray-300 mb-3 block"></i>
+                    <h3 class="text-lg font-semibold text-gray-900">No approved resources</h3>
+                    <p class="mt-1">You haven't approved any resources from this session.</p>
+                </div>
+            </div>
+            
+            {% endif %}
+        </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('resourceApproval', () => ({
+            activeTab: 'unapproved',
+            courseTags: [
+                {% for t in course.resource_tags.all %}
+                { id: {{ t.id }}, name: `{{ t.name|escapejs }}`, color: `{{ t.color|escapejs }}` },
+                {% endfor %}
+            ],
+            resources: [
+                {% for r in session.resources.all %}
+                {
+                    id: {{ r.id }},
+                    title: `{{ r.title|escapejs }}`,
+                    url: `{{ r.url|escapejs }}`,
+                    resource_type: `{{ r.resource_type|escapejs }}`,
+                    thumbnail_url: `{{ r.thumbnail_url|default:''|escapejs }}`,
+                    description: `{{ r.description|escapejs }}`,
+                    is_approved: {{ r.is_approved|yesno:"true,false" }},
+                    is_rejected: {{ r.is_rejected|yesno:"true,false" }},
+                    tags: [{% for t in r.tags.all %}{{ t.id }},{% endfor %}]
+                },
+                {% endfor %}
+            ],
+            
+            get unapproved() {
+                return this.resources.filter(r => !r.is_approved && !r.is_rejected);
+            },
+            
+            get approved() {
+                return this.resources.filter(r => r.is_approved);
+            },
+            
+            get unapprovedCount() {
+                return this.unapproved.length;
+            },
+            
+            get approvedCount() {
+                return this.approved.length;
+            },
+            
+            getTag(id) {
+                return this.courseTags.find(t => t.id === id) || {name: 'Unknown', color: '#999'};
+            },
+            
+            toggleApproval(resource) {
+                resource.is_approved = !resource.is_approved;
+                if (resource.is_approved) resource.is_rejected = false;
+                
+                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch(`/courses/{{ course.slug }}/resources/{{ session.id }}/approve/${resource.id}/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/json' }
+                }).catch(err => console.error(err));
+            },
+            
+            rejectResource(resource) {
+                resource.is_rejected = true;
+                resource.is_approved = false;
+                
+                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch(`/courses/{{ course.slug }}/resources/{{ session.id }}/reject/${resource.id}/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/json' }
+                }).catch(err => console.error(err));
+            },
+            
+            addTag(resource, tagId) {
+                if (!tagId) return;
+                tagId = parseInt(tagId);
+                if (!resource.tags.includes(tagId)) {
+                    resource.tags.push(tagId);
+                    this.saveTags(resource);
+                }
+            },
+            
+            removeTag(resource, tagId) {
+                resource.tags = resource.tags.filter(t => t !== tagId);
+                this.saveTags(resource);
+            },
+            
+            saveTags(resource) {
+                const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch(`/courses/{{ course.slug }}/resources/{{ session.id }}/tags/${resource.id}/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tags: resource.tags })
+                }).catch(err => console.error(err));
+            }
+        }))
+    });
+</script>
+{% endblock %}

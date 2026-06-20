@@ -23,6 +23,9 @@ from .models import (
     Profile,
     SectionEnrollment,
     Submission,
+    ResourceAssistantSession,
+    SuggestedResource,
+    GeneratedActivitySheet,
 )
 
 
@@ -964,3 +967,387 @@ def ai_activity_sheets(request, slug):
         "profile": _profile_for(request.user),
     })
 
+
+from .models import CourseWebsiteFilter, ResourceTag
+import json
+
+@login_required
+def toggle_resource_reject(request, slug, session_id, resource_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        resource = get_object_or_404(SuggestedResource, id=resource_id, session__course=course)
+        resource.is_rejected = not resource.is_rejected
+        if resource.is_rejected:
+            resource.is_approved = False # Mutual exclusion
+        resource.save()
+        return JsonResponse({"status": "success", "is_rejected": resource.is_rejected})
+    return JsonResponse({"status": "error", "message": "Invalid request"}, status=400)
+
+@login_required
+def update_resource_tags(request, slug, session_id, resource_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        resource = get_object_or_404(SuggestedResource, id=resource_id, session__course=course)
+        try:
+            data = json.loads(request.body)
+            tag_ids = data.get("tags", [])
+            resource.tags.set(tag_ids)
+            return JsonResponse({"status": "success"})
+        except json.JSONDecodeError:
+            pass
+    return JsonResponse({"status": "error", "message": "Invalid request"}, status=400)
+
+@login_required
+def manage_website_filters(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        urls = request.POST.get("urls", "")
+        filter_type = request.POST.get("filter_type", "trusted")
+        for line in urls.split("\n"):
+            line = line.strip()
+            if line:
+                CourseWebsiteFilter.objects.get_or_create(course=course, url=line, filter_type=filter_type)
+        messages.success(request, "Website filters updated.")
+        return redirect("academics:resource_assistant_index", slug=slug)
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def delete_website_filter(request, slug, filter_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        flt = get_object_or_404(CourseWebsiteFilter, id=filter_id, course=course)
+        flt.delete()
+        messages.success(request, "Filter deleted.")
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def manage_resource_tags(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        color = request.POST.get("color", "#3b82f6").strip()
+        if name:
+            ResourceTag.objects.get_or_create(course=course, name=name, defaults={"color": color})
+            messages.success(request, "Tag created.")
+        return redirect("academics:resource_assistant_index", slug=slug)
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def delete_resource_tag(request, slug, tag_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        tag = get_object_or_404(ResourceTag, id=tag_id, course=course)
+        tag.delete()
+        messages.success(request, "Tag deleted.")
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def resource_assistant_index(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    sessions = ResourceAssistantSession.objects.filter(course=course, author=request.user).order_by("-created_at")
+    approved_resources = SuggestedResource.objects.filter(session__course=course, session__author=request.user, is_approved=True, is_rejected=False).order_by("-created_at")
+    website_filters = CourseWebsiteFilter.objects.filter(course=course)
+    resource_tags = ResourceTag.objects.filter(course=course)
+    lesson_plans = course.generated_lesson_plans.filter(author=request.user)
+    materials = course.materials.filter(is_processed=True)
+    
+    return render(request, "academics/ai_resource_assistant.html", {
+        "course": course,
+        "sessions": sessions,
+        "show_form": False,
+        "approved_resources": approved_resources,
+        "website_filters": website_filters,
+        "resource_tags": resource_tags,
+        "lesson_plans": lesson_plans,
+        "materials": materials,
+        "profile": _profile_for(request.user),
+    })
+
+@login_required
+def ai_resource_assistant(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    sessions = ResourceAssistantSession.objects.filter(course=course, author=request.user).order_by("-created_at")
+    
+    if request.method == "POST":
+        topic = request.POST.get("topic")
+        lesson_plan_id = request.POST.get("based_on_lesson_plan")
+        materials_ids = request.POST.getlist("based_on_materials")
+        
+        if topic:
+            session = ResourceAssistantSession.objects.create(
+                course=course,
+                author=request.user,
+                topic=topic,
+                based_on_lesson_plan_id=lesson_plan_id if lesson_plan_id else None
+            )
+            if materials_ids:
+                session.based_on_materials.set(materials_ids)
+            
+            include_videos = request.POST.get("include_videos") == "true"
+            include_books = request.POST.get("include_books") == "true"
+            if not include_videos and not include_books:
+                include_videos = True
+                include_books = True
+            
+            # Start background task
+            from .tasks import generate_resources_task
+            generate_resources_task.delay(session.id, include_videos, include_books)
+            
+            return redirect("academics:resource_session_detail", slug=slug, session_id=session.id)
+            
+    # Load extra context for the form and aggregated views
+    approved_resources = SuggestedResource.objects.filter(session__course=course, session__author=request.user, is_approved=True, is_rejected=False).order_by("-created_at")
+    website_filters = CourseWebsiteFilter.objects.filter(course=course)
+    resource_tags = ResourceTag.objects.filter(course=course)
+    lesson_plans = course.generated_lesson_plans.filter(author=request.user)
+    materials = course.materials.filter(is_processed=True)
+    
+    return render(request, "academics/ai_resource_assistant.html", {
+        "course": course,
+        "sessions": sessions,
+        "show_form": True,
+        "approved_resources": approved_resources,
+        "website_filters": website_filters,
+        "resource_tags": resource_tags,
+        "lesson_plans": lesson_plans,
+        "materials": materials,
+        "profile": _profile_for(request.user),
+    })
+
+@login_required
+def resource_session_detail(request, slug, session_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    session = get_object_or_404(ResourceAssistantSession, id=session_id, course=course)
+    sessions = ResourceAssistantSession.objects.filter(course=course, author=request.user).order_by("-created_at")
+    
+    return render(request, "academics/resource_session_detail.html", {
+        "course": course,
+        "session": session,
+        "sessions": sessions,
+        "profile": _profile_for(request.user),
+    })
+
+@login_required
+def resource_session_delete(request, slug, session_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        session = get_object_or_404(ResourceAssistantSession, id=session_id, course=course)
+        session.delete()
+        messages.success(request, "Resource session deleted.")
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def toggle_resource_approval(request, slug, session_id, resource_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        resource = get_object_or_404(SuggestedResource, id=resource_id, session__course=course)
+        resource.is_approved = not resource.is_approved
+        if resource.is_approved:
+            resource.is_rejected = False # Mutual exclusion
+        resource.save()
+        return JsonResponse({"status": "success", "is_approved": resource.is_approved})
+    return JsonResponse({"status": "error", "message": "Invalid request"}, status=400)
+
+@login_required
+def activity_sheet_detail(request, slug, sheet_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    from academics.models import GeneratedActivitySheet
+    sheet = get_object_or_404(GeneratedActivitySheet, id=sheet_id, course=course)
+    all_sheets = GeneratedActivitySheet.objects.filter(course=course).order_by("-created_at")
+    
+    if request.method == "POST":
+        sheet.title = request.POST.get("title", sheet.title)
+        sheet.content = request.POST.get("content", sheet.content)
+        sheet.save()
+        messages.success(request, "Activity sheet updated.")
+        return redirect("academics:activity_sheet_detail", slug=slug, sheet_id=sheet.id)
+    
+    return render(request, "academics/activity_sheet_detail.html", {
+        "course": course,
+        "sheet": sheet,
+        "all_sheets": all_sheets,
+    })
+
+@login_required
+def activity_sheet_delete(request, slug, sheet_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    from academics.models import GeneratedActivitySheet
+    if request.method == "POST":
+        sheet = get_object_or_404(GeneratedActivitySheet, id=sheet_id, course=course)
+        sheet.delete()
+        messages.success(request, "Activity sheet deleted.")
+    return redirect("academics:ai_activity_sheets", slug=slug)
+
+@login_required
+def delete_approved_resource(request, slug, resource_id):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        resource = get_object_or_404(SuggestedResource, id=resource_id, session__course=course)
+        resource.delete()
+        messages.success(request, "Resource deleted.")
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def remove_duplicate_resources(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        resources = SuggestedResource.objects.filter(session__course=course, is_approved=True).order_by("-created_at")
+        seen_urls = set()
+        deleted_count = 0
+        for r in resources:
+            if r.url in seen_urls:
+                r.delete()
+                deleted_count += 1
+            else:
+                seen_urls.add(r.url)
+        messages.success(request, f"Removed {deleted_count} duplicate resource(s).")
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def manual_add_resource(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        url = request.POST.get("url")
+        title = request.POST.get("title")
+        resource_type = request.POST.get("resource_type", "book")
+        description = request.POST.get("description", "")
+        
+        session, created = ResourceAssistantSession.objects.get_or_create(
+            course=course,
+            topic="Manually Added Resources",
+            defaults={"status": "completed"}
+        )
+        
+        SuggestedResource.objects.create(
+            session=session,
+            title=title,
+            url=url,
+            resource_type=resource_type,
+            description=description,
+            is_approved=True
+        )
+        messages.success(request, "Resource added successfully.")
+        
+    return redirect("academics:resource_assistant_index", slug=slug)
+
+@login_required
+def lesson_plan_index(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    latest_plan = course.generated_lesson_plans.first()
+    if latest_plan:
+        return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=latest_plan.id)
+    return redirect("academics:ai_lesson_plan", slug=course.slug)
+
+@login_required
+def activity_sheet_index(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    
+    latest_sheet = course.generated_activity_sheets.first()
+    if latest_sheet:
+        return redirect("academics:activity_sheet_detail", slug=course.slug, sheet_id=latest_sheet.id)
+    return redirect("academics:ai_activity_sheets", slug=course.slug)
+
+@login_required
+def sync_resource_settings(request, slug):
+    course = get_object_or_404(Course, slug=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        payload = request.POST.get("payload")
+        if payload:
+            try:
+                data = json.loads(payload)
+                
+                # 1. Sync Website Filters (Safe to wipe and recreate)
+                CourseWebsiteFilter.objects.filter(course=course).delete()
+                for url in data.get("trusted", []):
+                    if url.strip():
+                        CourseWebsiteFilter.objects.create(course=course, url=url.strip(), filter_type="trusted")
+                for url in data.get("excluded", []):
+                    if url.strip():
+                        CourseWebsiteFilter.objects.create(course=course, url=url.strip(), filter_type="excluded")
+                        
+                # 2. Sync Tags (Preserve IDs to avoid breaking ManyToMany relationships)
+                incoming_tags = data.get("tags", [])
+                incoming_tag_ids = [t["id"] for t in incoming_tags if t.get("id")]
+                
+                # Delete tags that are no longer in the payload
+                ResourceTag.objects.filter(course=course).exclude(id__in=incoming_tag_ids).delete()
+                
+                # Update existing and create new
+                for t in incoming_tags:
+                    name = t.get("name", "").strip()
+                    color = t.get("color", "#3b82f6").strip()
+                    if not name:
+                        continue
+                        
+                    if t.get("id"):
+                        # Update existing
+                        tag = ResourceTag.objects.filter(id=t["id"], course=course).first()
+                        if tag:
+                            tag.name = name
+                            tag.color = color
+                            tag.save()
+                    else:
+                        # Create new
+                        ResourceTag.objects.create(course=course, name=name, color=color)
+                        
+                messages.success(request, "Links and tags saved successfully.")
+            except json.JSONDecodeError:
+                messages.error(request, "Failed to parse settings.")
+                
+    return redirect("academics:resource_assistant_index", slug=slug)

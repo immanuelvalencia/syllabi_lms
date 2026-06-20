@@ -33,8 +33,8 @@ class Profile(models.Model):
     school = models.ForeignKey(School, on_delete=models.CASCADE, related_name='profiles', null=True, blank=True)
     role = models.CharField(max_length=32, choices=Role.choices, default=Role.STUDENT)
     department = models.CharField(max_length=120, blank=True)
-    student_id = models.CharField(max_length=64, blank=True)
-    staff_id = models.CharField(max_length=64, blank=True)
+    id_number = models.CharField(max_length=64, blank=True)
+    grade_level = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -292,6 +292,30 @@ class GeneratedLessonPlan(models.Model):
     def __str__(self):
         return self.title
 
+
+class GeneratedActivitySheet(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="generated_activity_sheets")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    content = models.TextField(blank=True)
+    topic = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
+    error_message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
 class CourseMaterial(models.Model):
     class CategoryChoices(models.TextChoices):
         READING = "reading", "Reading Material"
@@ -357,3 +381,78 @@ class DocumentChunk(models.Model):
 
     def __str__(self):
         return f"Chunk {self.chunk_index} for {self.material.title or self.material.file.name}"
+
+class ResourceAssistantSession(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="resource_sessions")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    topic = models.CharField(max_length=200)
+    trusted_sources = models.CharField(max_length=500, blank=True, help_text="Comma-separated trusted URLs")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
+    error_message = models.TextField(blank=True, null=True)
+    
+    # RAG relationships
+    based_on_lesson_plan = models.ForeignKey("GeneratedLessonPlan", on_delete=models.SET_NULL, null=True, blank=True)
+    based_on_materials = models.ManyToManyField("CourseMaterial", blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Resource search for {self.topic}"
+
+class CourseWebsiteFilter(models.Model):
+    class FilterType(models.TextChoices):
+        TRUSTED = 'trusted', 'Trusted'
+        EXCLUDED = 'excluded', 'Excluded'
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="website_filters")
+    url = models.CharField(max_length=200)
+    filter_type = models.CharField(max_length=10, choices=FilterType.choices)
+    
+    class Meta:
+        unique_together = [("course", "url", "filter_type")]
+
+    def __str__(self):
+        return f"{self.get_filter_type_display()} - {self.url}"
+
+class ResourceTag(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="resource_tags")
+    name = models.CharField(max_length=50)
+    color = models.CharField(max_length=20, blank=True, default="#3b82f6") # Default blue
+    
+    class Meta:
+        unique_together = [("course", "name")]
+
+    def __str__(self):
+        return self.name
+
+class SuggestedResource(models.Model):
+    class ResourceType(models.TextChoices):
+        BOOK = "book", "Book"
+        VIDEO = "video", "Lecture Video"
+
+    session = models.ForeignKey(ResourceAssistantSession, on_delete=models.CASCADE, related_name="resources")
+    title = models.CharField(max_length=300)
+    url = models.URLField(max_length=500)
+    resource_type = models.CharField(max_length=20, choices=ResourceType.choices)
+    thumbnail_url = models.URLField(max_length=500, blank=True, null=True)
+    description = models.TextField(blank=True)
+    is_approved = models.BooleanField(default=False)
+    is_rejected = models.BooleanField(default=False)
+    tags = models.ManyToManyField(ResourceTag, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["resource_type", "title"]
+
+    def __str__(self):
+        return self.title

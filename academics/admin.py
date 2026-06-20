@@ -16,9 +16,9 @@ from .models import (
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "role", "department", "student_id", "staff_id")
-    list_filter = ("role", "department")
-    search_fields = ("user__username", "user__first_name", "user__last_name", "student_id", "staff_id")
+    list_display = ("user", "role", "school", "department", "id_number", "grade_level")
+    list_filter = ("role", "school", "grade_level", "department")
+    search_fields = ("user__username", "user__first_name", "user__last_name", "id_number", "school__name")
 
 
 class LessonInline(admin.TabularInline):

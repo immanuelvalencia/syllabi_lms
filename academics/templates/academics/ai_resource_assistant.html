@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+
+{% block title %}Resource Assistant | {{ course.title }}{% endblock %}
+{% block page_title %}Resource Assistant{% endblock %}
+
+{% block page_header %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold leading-6 text-green-600 uppercase tracking-widest">{{ course.title }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Resource Assistant</h1>
+    </div>
+    <div class="flex gap-2">
+        <a href="{% url 'academics:course_detail' course.slug %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            <i class="bi bi-arrow-left"></i>
+            Back to course
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div x-data="{ 
+    assistedSearchModalOpen: {% if show_form %}true{% else %}false{% endif %}, 
+    manualAddModalOpen: false, 
+    manageLinksModalOpen: false 
+}" class="flex flex-col gap-8 w-full max-w-7xl mx-auto">
+    
+    <!-- Action Bar -->
+    <div class="flex flex-wrap gap-4 items-center justify-between bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
+        <div class="flex gap-3">
+            <button @click="assistedSearchModalOpen = true" class="inline-flex items-center gap-x-2 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 transition">
+                <i class="bi bi-stars"></i> Assisted search
+            </button>
+            <button @click="manualAddModalOpen = true" class="inline-flex items-center gap-x-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition">
+                <i class="bi bi-plus-lg"></i> Manual add of resource
+            </button>
+        </div>
+        <div>
+            <button @click="manageLinksModalOpen = true" class="inline-flex items-center gap-x-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition">
+                <i class="bi bi-link-45deg"></i> Manage links
+            </button>
+        </div>
+    </div>
+
+    <!-- All Approved Resources Grid -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <h2 class="text-xl font-semibold text-gray-900">All Approved Resources</h2>
+            {% if approved_resources %}
+            <form method="post" action="{% url 'academics:remove_duplicate_resources' course.slug %}" onsubmit="return confirm('Remove all resources that share the same URL?');">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex items-center gap-x-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition">
+                    <i class="bi bi-magic"></i> Remove Duplicates
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        
+        <div class="p-6 bg-gray-50/50">
+            {% if approved_resources %}
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {% for r in approved_resources %}
+                <div class="flex flex-col h-full rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md overflow-hidden relative group hover:border-green-300">
+                    <!-- Thumbnail -->
+                    <div class="h-44 bg-gray-100 w-full relative flex-shrink-0">
+                        {% if r.thumbnail_url %}
+                            <img src="{{ r.thumbnail_url }}" class="w-full h-full object-cover" />
+                        {% else %}
+                            <div class="w-full h-full flex items-center justify-center text-gray-300">
+                                <i class="bi bi-image text-5xl"></i>
+                            </div>
+                        {% endif %}
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                            <a href="{{ r.url }}" target="_blank" class="text-white bg-white/20 hover:bg-white/40 backdrop-blur-sm px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition transform hover:scale-105">
+                                <i class="bi bi-box-arrow-up-right"></i> Open Link
+                            </a>
+                        </div>
+                        <!-- Top left floating pill for resource type -->
+                        <div class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-white shadow-sm flex items-center gap-1.5 backdrop-blur-md {% if r.resource_type == 'video' %}bg-red-600/90{% else %}bg-blue-600/90{% endif %}">
+                            <i class="{% if r.resource_type == 'video' %}bi bi-play-fill text-sm leading-none{% else %}bi bi-book-half{% endif %}"></i>
+                            {{ r.resource_type }}
+                        </div>
+                    </div>
+                    
+                    <!-- Content -->
+                    <div class="p-5 flex-1 flex flex-col">
+                        <h3 class="font-bold text-gray-900 text-base leading-tight mb-2 group-hover:text-green-600 transition line-clamp-2">
+                            <a href="{{ r.url }}" target="_blank">{{ r.title }}</a>
+                        </h3>
+                        <p class="text-sm text-gray-500 line-clamp-3 mb-4 flex-1">{{ r.description }}</p>
+                        
+                        <!-- Tags -->
+                        {% if r.tags.exists %}
+                        <div class="mb-4 flex flex-wrap gap-1.5">
+                            {% for tag in r.tags.all %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold text-white shadow-sm" style="background-color: {{ tag.color }};">
+                                {{ tag.name }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Footer -->
+                        <div class="pt-4 mt-auto border-t border-gray-100 flex items-center justify-between">
+                            <span class="text-xs text-gray-400 truncate max-w-[150px]" title="From: {{ r.session.topic }}">
+                                From: {{ r.session.topic }}
+                            </span>
+                            <form method="post" action="{% url 'academics:delete_approved_resource' course.slug r.id %}" onsubmit="return confirm('Delete this resource?');">
+                                {% csrf_token %}
+                                <button type="submit" class="text-gray-400 hover:text-red-500 transition tooltip" title="Delete Resource">
+                                    <i class="bi bi-trash text-lg"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <i class="bi bi-collection text-5xl text-gray-300"></i>
+                <h3 class="mt-4 text-base font-semibold text-gray-900">No approved resources</h3>
+                <p class="mt-2 text-sm text-gray-500 max-w-sm mx-auto">Approve resources from your search sessions and they will appear here as your master resource list.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Assisted Search Modal -->
+    <div x-show="assistedSearchModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div x-show="assistedSearchModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div x-show="assistedSearchModalOpen" @click.away="assistedSearchModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl text-gray-900">
+                    <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+                        <button type="button" @click="assistedSearchModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+                            <span class="sr-only">Close</span>
+                            <i class="bi bi-x text-2xl"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 border-b border-gray-100">
+                        <h2 class="text-xl font-semibold text-gray-900">Find Resources</h2>
+                        <p class="text-sm text-gray-500 mt-1">Provide a topic and we will scour the internet to find high-quality books and lecture videos for you to review and approve.</p>
+                    </div>
+
+                    <form method="post" action="{% url 'academics:ai_resource_assistant' course.slug %}" class="p-6 space-y-6">
+                        {% csrf_token %}
+                        
+                        <div>
+                            <label for="topic" class="block text-sm font-medium text-gray-700 mb-2">Topic or Subject Area <span class="text-red-500">*</span></label>
+                            <input type="text" name="topic" id="topic" required placeholder="e.g. Quantum Mechanics, Cellular Respiration" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6">
+                        </div>
+                        
+                        <!-- Resource Types -->
+                        <div class="border-t border-gray-100 pt-6">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Resource Types</h3>
+                            <div class="flex gap-6">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="include_videos" value="true" checked class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600">
+                                    <span class="text-sm font-medium text-gray-700"><i class="bi bi-play-btn-fill text-red-500 mr-1"></i> Videos</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="include_books" value="true" checked class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600">
+                                    <span class="text-sm font-medium text-gray-700"><i class="bi bi-book-half text-blue-500 mr-1"></i> Books / Readings</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Grounding Context -->
+                        <div class="border-t border-gray-100 pt-6">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Grounding Context</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="based_on_lesson_plan" class="block text-sm font-medium text-gray-700 mb-2">Based on Lesson Plan</label>
+                                    <select name="based_on_lesson_plan" id="based_on_lesson_plan" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6">
+                                        <option value="">-- Optional: Select Lesson Plan --</option>
+                                        {% for plan in lesson_plans %}
+                                        <option value="{{ plan.id }}">{{ plan.title }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="based_on_materials" class="block text-sm font-medium text-gray-700 mb-2">Based on Analyzed Materials</label>
+                                    <select name="based_on_materials" id="based_on_materials" multiple class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6" style="height: 100px;">
+                                        {% for mat in materials %}
+                                        <option value="{{ mat.id }}">{{ mat.title|default:mat.file.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <p class="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Applied Website Filters -->
+                        <div class="border-t border-gray-100 pt-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-sm font-semibold text-gray-900">Website Filters Applied</h3>
+                                <button type="button" @click="manageLinksModalOpen = true; assistedSearchModalOpen = false" class="text-sm font-medium text-indigo-600 hover:text-indigo-500 transition flex items-center gap-1"><i class="bi bi-pencil-square"></i> Edit Global Links</button>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <!-- Trusted -->
+                                <div>
+                                    <h4 class="text-xs font-bold text-green-700 uppercase tracking-wider mb-2 flex items-center gap-1"><i class="bi bi-shield-check"></i> Trusted Domains</h4>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        {% for f in website_filters %}
+                                            {% if f.filter_type == 'trusted' %}
+                                            <span class="inline-flex items-center gap-1 bg-white px-2 py-0.5 border border-green-200 rounded-md text-xs font-medium text-green-700 shadow-sm">
+                                                {{ f.url }}
+                                            </span>
+                                            {% endif %}
+                                        {% endfor %}
+                                        
+                                        {% if not website_filters|length %}
+                                            <!-- Just in case no filters at all -->
+                                            <span class="text-xs text-gray-500 italic">None configured.</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <!-- Excluded -->
+                                <div>
+                                    <h4 class="text-xs font-bold text-red-700 uppercase tracking-wider mb-2 flex items-center gap-1"><i class="bi bi-shield-x"></i> Excluded Domains</h4>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        {% for f in website_filters %}
+                                            {% if f.filter_type == 'excluded' %}
+                                            <span class="inline-flex items-center gap-1 bg-white px-2 py-0.5 border border-red-200 rounded-md text-xs font-medium text-red-700 shadow-sm">
+                                                {{ f.url }}
+                                            </span>
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% if not website_filters|length %}
+                                            <span class="text-xs text-gray-500 italic">None configured.</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">These global constraints will automatically shape the AI's search strategy.</p>
+                        </div>
+
+                        <div class="pt-6 flex items-center justify-end gap-x-6 border-t border-gray-100">
+                            <button type="submit" class="inline-flex items-center gap-x-2 rounded-md bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 transition">
+                                <i class="bi bi-stars"></i>
+                                Search Internet
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Add Modal -->
+    <div x-show="manualAddModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div x-show="manualAddModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div x-show="manualAddModalOpen" @click.away="manualAddModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg text-gray-900">
+                    <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+                        <button type="button" @click="manualAddModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+                            <span class="sr-only">Close</span>
+                            <i class="bi bi-x text-2xl"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 border-b border-gray-100">
+                        <h2 class="text-xl font-semibold text-gray-900">Manual Add Resource</h2>
+                        <p class="text-sm text-gray-500 mt-1">Directly add a book, video, or article to your approved resources list.</p>
+                    </div>
+                    <form method="post" action="{% url 'academics:manual_add_resource' course.slug %}" class="p-6 space-y-6">
+                        {% csrf_token %}
+                        <div>
+                            <label for="manual_url" class="block text-sm font-medium text-gray-700 mb-2">URL <span class="text-red-500">*</span></label>
+                            <input type="url" name="url" id="manual_url" required placeholder="https://example.com" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6">
+                        </div>
+                        <div>
+                            <label for="manual_title" class="block text-sm font-medium text-gray-700 mb-2">Title <span class="text-red-500">*</span></label>
+                            <input type="text" name="title" id="manual_title" required placeholder="Resource Title" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6">
+                        </div>
+                        <div>
+                            <label for="manual_type" class="block text-sm font-medium text-gray-700 mb-2">Resource Type</label>
+                            <select name="resource_type" id="manual_type" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6">
+                                <option value="video">Video</option>
+                                <option value="book">Book / Reading</option>
+                                <option value="article">Article</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="manual_description" class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                            <textarea name="description" id="manual_description" rows="3" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm sm:leading-6"></textarea>
+                        </div>
+                        <div class="pt-6 flex items-center justify-end gap-x-4 border-t border-gray-100">
+                            <button type="button" @click="manualAddModalOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                            <button type="submit" class="inline-flex items-center gap-x-2 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 transition">
+                                Add Resource
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Links Modal -->
+    <div x-show="manageLinksModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div x-show="manageLinksModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div x-show="manageLinksModalOpen" @click.away="manageLinksModalOpen = false" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-5xl text-gray-900">
+                    <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block z-10">
+                        <button type="button" @click="manageLinksModalOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+                            <span class="sr-only">Close</span>
+                            <i class="bi bi-x text-2xl"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-900">Manage Links & Tags</h2>
+                            <p class="text-sm text-gray-500 mt-1">Configure website filters and custom tags to organize your resources.</p>
+                        </div>
+                    </div>
+                    
+                    <form method="post" action="{% url 'academics:sync_resource_settings' course.slug %}"
+                          x-data="{
+                              trusted: [{% for f in website_filters %}{% if f.filter_type == 'trusted' %}'{{ f.url|escapejs }}',{% endif %}{% endfor %}],
+                              excluded: [{% for f in website_filters %}{% if f.filter_type == 'excluded' %}'{{ f.url|escapejs }}',{% endif %}{% endfor %}],
+                              tags: [{% for tag in resource_tags %}{id: {{ tag.id }}, name: '{{ tag.name|escapejs }}', color: '{{ tag.color|escapejs }}'},{% endfor %}],
+                              
+                              newTrusted: '',
+                              newExcluded: '',
+                              newTagName: '',
+                              newTagColor: '#3b82f6',
+                              
+                              addTrusted() {
+                                  let url = this.newTrusted.trim();
+                                  if (url && !this.trusted.includes(url)) this.trusted.push(url);
+                                  this.newTrusted = '';
+                              },
+                              addExcluded() {
+                                  let url = this.newExcluded.trim();
+                                  if (url && !this.excluded.includes(url)) this.excluded.push(url);
+                                  this.newExcluded = '';
+                              },
+                              addTag() {
+                                  let name = this.newTagName.trim();
+                                  if (name && !this.tags.find(t => t.name === name)) {
+                                      this.tags.push({id: null, name: name, color: this.newTagColor});
+                                  }
+                                  this.newTagName = '';
+                              },
+                              get payload() {
+                                  return JSON.stringify({ trusted: this.trusted, excluded: this.excluded, tags: this.tags });
+                              }
+                          }">
+                        {% csrf_token %}
+                        <input type="hidden" name="payload" :value="payload">
+
+                        <div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Trusted Websites -->
+                            <div class="bg-green-50 p-5 rounded-2xl border border-green-100 flex flex-col h-full">
+                                <div class="mb-4">
+                                    <h3 class="text-base font-semibold text-green-800 flex items-center gap-2"><i class="bi bi-shield-check"></i> Trusted Websites</h3>
+                                    <p class="text-xs text-green-600 mt-1">Prioritize these domains (e.g. khanacademy.org)</p>
+                                </div>
+                                
+                                <div class="flex flex-col gap-2 mb-4 overflow-y-auto max-h-60 pr-1">
+                                    <template x-for="(url, index) in trusted" :key="index">
+                                        <div class="flex items-center justify-between bg-white px-3 py-2 border border-green-200 rounded-md text-sm font-medium text-green-700 shadow-sm">
+                                            <div class="flex items-center gap-2 overflow-hidden">
+                                                <i class="bi bi-check-circle-fill text-green-500 shrink-0"></i> 
+                                                <span x-text="url" class="truncate"></span>
+                                            </div>
+                                            <button type="button" @click="trusted.splice(index, 1)" class="ml-2 text-green-400 hover:text-red-500 transition shrink-0"><i class="bi bi-x text-lg"></i></button>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <div class="mt-auto pt-2 border-t border-green-100">
+                                    <div class="flex gap-2">
+                                        <input type="text" x-model="newTrusted" @keydown.enter.prevent="addTrusted()" placeholder="Add domain and press Enter" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-green-200 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-sm">
+                                        <button type="button" @click="addTrusted()" class="bg-green-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-green-700 shadow-sm transition"><i class="bi bi-plus-lg"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Excluded Websites -->
+                            <div class="bg-red-50 p-5 rounded-2xl border border-red-100 flex flex-col h-full">
+                                <div class="mb-4">
+                                    <h3 class="text-base font-semibold text-red-800 flex items-center gap-2"><i class="bi bi-shield-x"></i> Excluded Websites</h3>
+                                    <p class="text-xs text-red-600 mt-1">Never show results from these domains</p>
+                                </div>
+                                
+                                <div class="flex flex-col gap-2 mb-4 overflow-y-auto max-h-60 pr-1">
+                                    <template x-for="(url, index) in excluded" :key="index">
+                                        <div class="flex items-center justify-between bg-white px-3 py-2 border border-red-200 rounded-md text-sm font-medium text-red-700 shadow-sm">
+                                            <div class="flex items-center gap-2 overflow-hidden">
+                                                <i class="bi bi-x-circle-fill text-red-500 shrink-0"></i> 
+                                                <span x-text="url" class="truncate"></span>
+                                            </div>
+                                            <button type="button" @click="excluded.splice(index, 1)" class="ml-2 text-red-400 hover:text-red-600 transition shrink-0"><i class="bi bi-x text-lg"></i></button>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <div class="mt-auto pt-2 border-t border-red-100">
+                                    <div class="flex gap-2">
+                                        <input type="text" x-model="newExcluded" @keydown.enter.prevent="addExcluded()" placeholder="Add domain and press Enter" class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-red-200 focus:ring-2 focus:ring-inset focus:ring-red-600 sm:text-sm">
+                                        <button type="button" @click="addExcluded()" class="bg-red-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-red-700 shadow-sm transition"><i class="bi bi-plus-lg"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Resource Tags -->
+                            <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100 flex flex-col h-full">
+                                <div class="mb-4">
+                                    <h3 class="text-base font-semibold text-blue-800 flex items-center gap-2"><i class="bi bi-tags"></i> Custom Tags</h3>
+                                    <p class="text-xs text-blue-600 mt-1">Create custom tags to organize resources</p>
+                                </div>
+                                
+                                <div class="flex flex-wrap gap-2 mb-4">
+                                    <template x-for="(tag, index) in tags" :key="index">
+                                        <div class="inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold text-white shadow-sm" :style="`background-color: ${tag.color};`">
+                                            <span x-text="tag.name"></span>
+                                            <button type="button" @click="tags.splice(index, 1)" class="ml-1 text-white hover:text-gray-200 transition"><i class="bi bi-x text-sm"></i></button>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <div class="mt-auto pt-2 border-t border-blue-100">
+                                    <div class="flex gap-2">
+                                        <input type="text" x-model="newTagName" @keydown.enter.prevent="addTag()" placeholder="Tag Name..." class="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-blue-200 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm">
+                                        <input type="color" x-model="newTagColor" class="block h-[36px] w-[46px] rounded-md border-0 shadow-sm p-0.5 cursor-pointer bg-white">
+                                        <button type="button" @click="addTag()" class="bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 shadow-sm transition"><i class="bi bi-plus-lg"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Single Save Button -->
+                        <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end gap-3 rounded-b-2xl">
+                            <button type="button" @click="manageLinksModalOpen = false" class="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-md transition">Cancel</button>
+                            <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 shadow-sm transition flex items-center gap-2">
+                                <i class="bi bi-check-circle"></i> Save All Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+{% endblock %}

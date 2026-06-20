@@ -76,7 +76,7 @@ def generate_lesson_plan_content(course, materials_ids, topic, modules, duration
     # If materials are selected, fetch their chunks
     context_text = ""
     if materials_ids:
-        chunks = DocumentChunk.objects.filter(material_id__in=materials_ids)
+        chunks = DocumentChunk.objects.filter(material_id__in=materials_ids).order_by("material_id", "chunk_index")
         # We can just join them up, or if there's too many, limit them.
         # Since it's for lesson planning, we might want the whole content or a substantial amount.
         # For simplicity, we just concatenate all chunks of the selected materials.

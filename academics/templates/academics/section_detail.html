@@ -26,88 +26,9 @@
     <main class="flex-1 min-w-0">
         <!-- Header moved to page_header block -->
 
-        <section id="analytics" class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            <div>{% include "components/stat_card.html" with label="Students" value=student_count caption="Section enrollment" %}</div>
-            <div>{% include "components/stat_card.html" with label="Course Students" value=course_student_count caption="All sections" %}</div>
-            <div>{% include "components/stat_card.html" with label="Engagement" value=completion_score|stringformat:"s"|add:"%" caption="Estimated activity" %}</div>
-        </section>
 
-        <section id="announcements" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
-            <div class="p-6 sm:p-8">
-                <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Announcements</h2>
 
-                <ul role="list" class="divide-y divide-gray-100">
-                    {% for announcement in section_announcements %}
-                        <li class="py-4">
-                            <div class="flex items-start justify-between gap-4">
-                                <div class="min-w-0">
-                                    <p class="text-sm font-semibold leading-6 text-gray-900">{{ announcement.title }}</p>
-                                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ announcement.body|truncatewords:28 }}</p>
-                                </div>
-                                <p class="shrink-0 text-xs text-gray-500">{{ announcement.created_at|date:"M j" }}</p>
-                            </div>
-                        </li>
-                    {% empty %}
-                        <li class="py-4"><p class="text-gray-500 italic">No announcements for this section yet.</p></li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </section>
 
-        <section id="grading" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
-            <div class="p-6 sm:p-8">
-                <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Grading</h2>
-
-                <ul role="list" class="divide-y divide-gray-100">
-                    {% for submission in pending_submissions %}
-                        <li class="py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div class="min-w-0">
-                                <p class="text-sm font-semibold leading-6 text-gray-900">{{ submission.assignment.title }}</p>
-                                <p class="mt-1 text-xs leading-5 text-gray-500">
-                                    {{ submission.student.get_full_name|default:submission.student.username }} submitted {{ submission.submitted_at|date:"M j, Y" }}
-                                </p>
-                            </div>
-                            <a href="/admin/academics/submission/{{ submission.id }}/change/" class="inline-flex w-fit items-center gap-x-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
-                                <i class="bi bi-clipboard-check text-gray-400"></i> Review
-                            </a>
-                        </li>
-                    {% empty %}
-                        <li class="py-4"><p class="text-gray-500 italic">No ungraded submissions for this section.</p></li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </section>
-
-        <section id="students" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 mb-8">
-            <div class="p-6 sm:p-8">
-                <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Students</h2>
-                
-                <ul role="list" class="divide-y divide-gray-100">
-                    {% for enrollment in section.section_enrollments.all %}
-                        <li class="py-4 flex justify-between items-center gap-x-6">
-                            <div class="flex gap-x-4">
-                                <div class="h-10 w-10 flex-none rounded-full bg-green-100 flex items-center justify-center">
-                                    <i class="bi bi-person text-green-600 text-lg"></i>
-                                </div>
-                                <div class="min-w-0 flex-auto">
-                                    <p class="text-sm font-semibold leading-6 text-gray-900">{{ enrollment.student.get_full_name|default:enrollment.student.username }}</p>
-                                    <p class="mt-1 truncate text-xs leading-5 text-gray-500">{{ enrollment.student.email|default:"No email" }}</p>
-                                </div>
-                            </div>
-                            <div class="hidden sm:flex sm:flex-col sm:items-end">
-                                <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Active</span>
-                            </div>
-                        </li>
-                    {% empty %}
-                        <li class="py-4"><p class="text-gray-500 italic">No students enrolled in this section yet.</p></li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </section>
-
-        <section id="ai-tools">
-            {% include "components/ai_tool_panel.html" with title="Section AI tools" ai_requests=ai_requests course=course section=section %}
-        </section>
     </main>
 
     <aside class="w-full lg:w-72 shrink-0">
