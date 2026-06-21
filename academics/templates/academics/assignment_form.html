@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}{% if assignment %}Edit{% else %}Create{% endif %} Assignment | {{ course.title }}{% endblock %}
+
+{% block page_header %}
+<div class="mb-4">
+    <a href="{% url 'academics:course_activities' course.slug %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+        <i class="bi bi-arrow-left"></i> Back to section
+    </a>
+</div>
+<div>
+    <p class="text-sm font-semibold uppercase tracking-widest text-green-600">{{ course.code }}</p>
+    <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{% if assignment %}Edit{% else %}Create{% endif %} Activity</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+    <div class="p-6 sm:p-8" x-data="activityForm()">
+        <form method="post" class="space-y-8" @submit="submitForm">
+            {% csrf_token %}
+            <input type="hidden" name="questions_json" x-model="questionsJsonPayload">
+            
+            {% if assignment_form.non_field_errors %}
+                <div class="rounded-md border border-red-200 bg-red-50 p-4">
+                    <div class="text-sm text-red-700">{{ assignment_form.non_field_errors }}</div>
+                </div>
+            {% endif %}
+
+            <div>
+                <h3 class="text-base font-semibold leading-7 text-gray-900">Activity Details</h3>
+                <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div>
+                        <label for="{{ assignment_form.activity_type.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.activity_type.label }}</label>
+                        <div class="mt-1">{{ assignment_form.activity_type }}</div>
+                        {% for error in assignment_form.activity_type.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div>
+                        <label for="{{ assignment_form.activity_section.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.activity_section.label }}</label>
+                        <div class="mt-1">{{ assignment_form.activity_section }}</div>
+                        {% for error in assignment_form.activity_section.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div>
+                        <label for="{{ assignment_form.course_section.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.course_section.label }}</label>
+                        <div class="mt-1">{{ assignment_form.course_section }}</div>
+                        {% for error in assignment_form.course_section.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div>
+                        <label for="{{ assignment_form.time_limit_minutes.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.time_limit_minutes.label }}</label>
+                        <div class="mt-1">{{ assignment_form.time_limit_minutes }}</div>
+                        {% for error in assignment_form.time_limit_minutes.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label for="{{ assignment_form.title.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.title.label }}</label>
+                    <div class="mt-1">{{ assignment_form.title }}</div>
+                    {% for error in assignment_form.title.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="mt-4">
+                    <label for="{{ assignment_form.due_at.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.due_at.label }}</label>
+                    <div class="mt-1">{{ assignment_form.due_at }}</div>
+                    {% for error in assignment_form.due_at.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="mt-4">
+                    <label for="{{ assignment_form.instructions.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ assignment_form.instructions.label }}</label>
+                    <div class="mt-1">{{ assignment_form.instructions }}</div>
+                    {% for error in assignment_form.instructions.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                </div>
+            </div>
+
+            <!-- Alpine.js dynamic questions section -->
+            <div class="pt-6 border-t border-gray-100">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-base font-semibold leading-7 text-gray-900">Questions</h3>
+                    <p class="text-sm font-medium text-gray-500">Total Points: <span class="text-gray-900 font-bold" x-text="totalPoints"></span></p>
+                </div>
+
+                <div class="space-y-6">
+                    <template x-for="(question, index) in questions" :key="index">
+                        <div class="p-5 border border-gray-200 rounded-lg bg-gray-50/50">
+                            <div class="flex justify-between items-start mb-4">
+                                <h4 class="font-medium text-gray-900">Question <span x-text="index + 1"></span></h4>
+                                <button type="button" @click="removeQuestion(index)" class="text-red-500 hover:text-red-700 text-sm font-medium"><i class="bi bi-trash"></i> Remove</button>
+                            </div>
+                            
+                            <div class="grid gap-4 sm:grid-cols-12 mb-4">
+                                <div class="sm:col-span-8">
+                                    <label class="block text-sm font-medium leading-6 text-gray-900">Question Text</label>
+                                    <textarea x-model="question.text" rows="2" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6"></textarea>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-medium leading-6 text-gray-900">Type</label>
+                                    <select x-model="question.type" @change="handleTypeChange(question)" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                        <option value="multiple_choice">Multiple Choice</option>
+                                        <option value="true_false">True/False</option>
+                                        <option value="text">Text Field</option>
+                                        <option value="number">Number Field</option>
+                                    </select>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-medium leading-6 text-gray-900">Points</label>
+                                    <input type="number" x-model.number="question.points" min="0" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                </div>
+                            </div>
+
+                            <!-- Multiple Choice Options -->
+                            <div x-show="question.type === 'multiple_choice'" class="mt-4 ml-4 pl-4 border-l-2 border-gray-200">
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Choices</label>
+                                <template x-for="(choice, cIndex) in question.choices" :key="cIndex">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <input type="radio" :name="'correct_' + index" :value="choice" x-model="question.correct_answer" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                        <input type="text" x-model="question.choices[cIndex]" @input="updateCorrectAnswerIfSelected(question, choice, $event.target.value, cIndex)" class="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                        <button type="button" @click="removeChoice(question, cIndex)" class="text-red-500 hover:text-red-700 p-2"><i class="bi bi-x-circle"></i></button>
+                                    </div>
+                                </template>
+                                <button type="button" @click="addChoice(question)" class="mt-2 text-sm text-green-600 font-medium hover:text-green-700"><i class="bi bi-plus-circle"></i> Add Choice</button>
+                            </div>
+
+                            <!-- True/False Answer -->
+                            <div x-show="question.type === 'true_false'" class="mt-4">
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Correct Answer</label>
+                                <div class="flex items-center gap-4">
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" x-model="question.correct_answer" value="True" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                        <span class="text-sm">True</span>
+                                    </label>
+                                    <label class="flex items-center gap-2">
+                                        <input type="radio" x-model="question.correct_answer" value="False" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                        <span class="text-sm">False</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Text/Number Answer -->
+                            <div x-show="question.type === 'text' || question.type === 'number'" class="mt-4">
+                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Correct Answer (Optional)</label>
+                                <input :type="question.type === 'number' ? 'number' : 'text'" x-model="question.correct_answer" class="block w-full sm:w-1/2 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <button type="button" @click="addQuestion" class="mt-6 inline-flex items-center gap-2 rounded-md bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                    <i class="bi bi-plus"></i> Add Question
+                </button>
+            </div>
+
+            <div class="flex items-center justify-end gap-x-4 border-t border-gray-100 pt-5">
+                <a href="{% if assignment %}{% url 'academics:assignment_detail' course.slug assignment.id %}{% else %}{% url 'academics:course_activities' course.slug %}{% endif %}" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</a>
+                <button type="submit" class="inline-flex h-10 items-center justify-center rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">{% if assignment %}Save Changes{% else %}Create Activity{% endif %}</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('activityForm', () => ({
+            questions: {{ questions_json|safe|default:"[]" }},
+            questionsJsonPayload: '',
+
+            get totalPoints() {
+                return this.questions.reduce((sum, q) => sum + (parseInt(q.points) || 0), 0);
+            },
+
+            addQuestion() {
+                this.questions.push({
+                    text: '',
+                    type: 'multiple_choice',
+                    points: 1,
+                    choices: ['A', 'B', 'C'],
+                    correct_answer: 'A'
+                });
+            },
+
+            removeQuestion(index) {
+                this.questions.splice(index, 1);
+            },
+
+            addChoice(question) {
+                question.choices.push(`Choice ${question.choices.length + 1}`);
+            },
+
+            removeChoice(question, index) {
+                if (question.correct_answer === question.choices[index]) {
+                    question.correct_answer = '';
+                }
+                question.choices.splice(index, 1);
+            },
+
+            updateCorrectAnswerIfSelected(question, oldChoice, newChoice, index) {
+                if (question.correct_answer === oldChoice) {
+                    question.correct_answer = newChoice;
+                }
+                question.choices[index] = newChoice;
+            },
+
+            handleTypeChange(question) {
+                if (question.type === 'multiple_choice') {
+                    if (!question.choices || question.choices.length === 0) {
+                        question.choices = ['A', 'B', 'C'];
+                    }
+                    if (!question.choices.includes(question.correct_answer)) {
+                        question.correct_answer = question.choices[0];
+                    }
+                } else if (question.type === 'true_false') {
+                    if (question.correct_answer !== 'True' && question.correct_answer !== 'False') {
+                        question.correct_answer = 'True';
+                    }
+                } else {
+                    question.correct_answer = '';
+                }
+            },
+
+            submitForm() {
+                this.questionsJsonPayload = JSON.stringify(this.questions);
+            }
+        }));
+    });
+</script>
+{% endblock %}

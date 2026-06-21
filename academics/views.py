@@ -1,17 +1,21 @@
+from datetime import timedelta
 from io import BytesIO
+import json
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Avg, Count, Q
-from django.http import HttpResponse
+from django.db.models import Avg, Count, Max, Q
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from .tasks import process_material_rag
 
-from .forms import CourseForm, CourseSectionForm, SectionEnrollmentForm, CourseMaterialForm
+from .forms import ActivitySectionForm, AssignmentForm, CourseForm, CourseSectionForm, SectionEnrollmentForm, CourseMaterialForm
 from .models import (
+    ActivitySection,
     AiToolRequest,
     Announcement,
     Assignment,
@@ -21,6 +25,7 @@ from .models import (
     Enrollment,
     GeneratedLessonPlan,
     Profile,
+    Question,
     SectionEnrollment,
     Submission,
     ResourceAssistantSession,
@@ -284,7 +289,7 @@ def course_detail(request, slug):
     can_manage = _can_manage_course(request.user, course)
     course_form = CourseForm(instance=course)
     section_form = CourseSectionForm()
-    enrollment_form = SectionEnrollmentForm()
+    enrollment_form = SectionEnrollmentForm(course=course)
     material_form = CourseMaterialForm()
     manage_course_modal_open = False
 
@@ -323,9 +328,10 @@ def course_detail(request, slug):
                 return redirect(course.get_absolute_url())
         elif action == "enroll_student":
             section = get_object_or_404(CourseSection, public_id=request.POST.get("section_id"), course=course)
-            enrollment_form = SectionEnrollmentForm(request.POST)
+            enrollment_form = SectionEnrollmentForm(request.POST, course=course, section=section)
             if enrollment_form.is_valid():
                 student = enrollment_form.cleaned_data["student"]
+                SectionEnrollment.objects.filter(section__course=course, student=student).delete()
                 SectionEnrollment.objects.get_or_create(section=section, student=student)
                 Enrollment.objects.get_or_create(student=student, course=course)
                 messages.success(request, f"{student.get_full_name() or student.username} enrolled in {section.name}.")
@@ -510,25 +516,8 @@ def analyze_material(request, material_id):
 
 @login_required
 def section_detail(request, slug, section_id):
-    course = get_object_or_404(
-        Course.objects.select_related("instructor").prefetch_related("sections"),
-        slug__iexact=slug,
-    )
-    if not _can_view_course(request.user, course):
-        raise PermissionDenied
-
-    section = get_object_or_404(
-        CourseSection.objects.select_related("course").prefetch_related("section_enrollments__student"),
-        id=section_id,
-        course=course,
-    )
-    profile = _profile_for(request.user)
-    can_manage = _can_manage_course(request.user, course)
-    
-    if not can_manage:
-        is_enrolled = any(se.student_id == request.user.id for se in section.section_enrollments.all())
-        if not is_enrolled:
-            raise PermissionDenied
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    section_form = CourseSectionForm(instance=section)
     
     if request.method == "POST":
         if not can_manage:
@@ -547,46 +536,692 @@ def section_detail(request, slug, section_id):
                 section.delete()
                 messages.success(request, "Section deleted successfully.")
                 return redirect(course.get_absolute_url())
-            else:
-                messages.error(request, "Course code did not match. Section not deleted.")
-                return redirect(section.get_absolute_url())
-    else:
-        section_form = CourseSectionForm(instance=section)
+            messages.error(request, "Course code did not match. Section not deleted.")
+            return redirect(section.get_absolute_url())
 
-    student_count = section.section_enrollments.count()
-    student_ids = list(section.section_enrollments.values_list("student_id", flat=True))
-    course_student_count = Enrollment.objects.filter(course=course).count()
-    pending_submissions = Submission.objects.none()
-    if can_manage:
-        pending_submissions = Submission.objects.filter(
-            assignment__course=course,
-            student_id__in=student_ids,
-            score__isnull=True,
-        ).select_related("student", "assignment")[:8]
-    section_announcements = Announcement.objects.filter(
-        Q(audience_all=True) | Q(course=course)
-    ).select_related("author", "course")[:5]
-    ai_requests = AiToolRequest.objects.filter(
-        user=request.user,
-        metadata__course_public_id=str(course.public_id),
-        metadata__section_public_id=str(section.public_id),
-    )[:5]
-    completion_score = min(100, max(0, student_count * 12))
-
-    context = {
+    context = _section_dashboard_context(course, section, can_manage)
+    context.update({
         "profile": profile,
         "course": course,
         "section": section,
         "can_manage": can_manage,
+        "section_form": section_form,
+    })
+    return render(request, "academics/section_detail.html", context)
+
+
+def _section_access_context(user, slug, section_id):
+    course = get_object_or_404(
+        Course.objects.select_related("instructor").prefetch_related("sections"),
+        slug__iexact=slug,
+    )
+    if not _can_view_course(user, course):
+        raise PermissionDenied
+
+    section = get_object_or_404(
+        CourseSection.objects.select_related("course").prefetch_related("section_enrollments__student__profile"),
+        id=section_id,
+        course=course,
+    )
+    can_manage = _can_manage_course(user, course)
+    if not can_manage:
+        is_enrolled = any(se.student_id == user.id for se in section.section_enrollments.all())
+        if not is_enrolled:
+            raise PermissionDenied
+    return course, section, _profile_for(user), can_manage
+
+
+def _section_dashboard_context(course, section, can_manage):
+    section_enrollments = list(
+        SectionEnrollment.objects.filter(section=section)
+        .select_related("student", "student__profile")
+        .order_by("student__last_name", "student__first_name", "student__username")
+    )
+    student_count = len(section_enrollments)
+    student_ids = [enrollment.student_id for enrollment in section_enrollments]
+    course_student_count = Enrollment.objects.filter(course=course).count()
+    assignments = list(
+        course.assignments.filter(Q(course_section=section) | Q(course_section__isnull=True))
+        .prefetch_related("submissions")
+        .order_by("activity_section__order", "course_section__order", "order", "due_at", "title")
+    )
+    assignment_count = len(assignments)
+    activity_rows = []
+    section_student_ids = set(student_ids)
+    for assignment in assignments:
+        section_submissions = [
+            submission
+            for submission in assignment.submissions.all()
+            if submission.student_id in section_student_ids
+        ]
+        submitted_count = len(section_submissions)
+        ungraded_count = sum(1 for submission in section_submissions if submission.score is None)
+        activity_rows.append({
+            "assignment": assignment,
+            "submitted_count": submitted_count,
+            "ungraded_count": ungraded_count,
+            "expected_count": student_count,
+        })
+    pending_submissions = Submission.objects.none()
+    if can_manage:
+        pending_submissions = Submission.objects.filter(
+            Q(assignment__course_section=section) | Q(assignment__course_section__isnull=True),
+            assignment__course=course,
+            student_id__in=student_ids,
+            score__isnull=True,
+        ).select_related("student", "assignment")[:8]
+    pending_submission_count = Submission.objects.filter(
+        Q(assignment__course_section=section) | Q(assignment__course_section__isnull=True),
+        assignment__course=course,
+        student_id__in=student_ids,
+        score__isnull=True,
+    ).count()
+    total_submission_count = Submission.objects.filter(
+        Q(assignment__course_section=section) | Q(assignment__course_section__isnull=True),
+        assignment__course=course,
+        student_id__in=student_ids,
+    ).count()
+    due_soon_count = Assignment.objects.filter(
+        Q(course_section=section) | Q(course_section__isnull=True),
+        course=course,
+        due_at__gte=timezone.now(),
+        due_at__lte=timezone.now() + timedelta(days=7),
+    ).count()
+    
+    at_risk_count = 0
+    if can_manage and student_ids:
+        graded_submissions = Submission.objects.filter(
+            assignment__course=course,
+            student_id__in=student_ids,
+            score__isnull=False
+        ).select_related('assignment')
+        
+        student_scores = {}
+        for sub in graded_submissions:
+            max_score = sub.assignment.max_score or 0
+            if max_score > 0:
+                if sub.student_id not in student_scores:
+                    student_scores[sub.student_id] = {'earned': 0, 'total': 0}
+                student_scores[sub.student_id]['earned'] += sub.score
+                student_scores[sub.student_id]['total'] += max_score
+                
+        for sid, scores in student_scores.items():
+            if scores['total'] > 0 and (scores['earned'] / scores['total']) < 0.70:
+                at_risk_count += 1
+
+    section_alerts = []
+    if student_count == 0:
+        section_alerts.append({
+            "level": "warning",
+            "title": "No students enrolled",
+            "body": "Add students to this section before assigning graded work.",
+            "icon": "bi-people",
+        })
+    if pending_submission_count:
+        section_alerts.append({
+            "level": "danger",
+            "title": f"{pending_submission_count} item{'s' if pending_submission_count != 1 else ''} to grade",
+            "body": "Review submitted work so students can see feedback and scores.",
+            "icon": "bi-clipboard-check",
+        })
+    if not section.meeting_days or not section.start_time or not section.end_time:
+        section_alerts.append({
+            "level": "info",
+            "title": "Schedule incomplete",
+            "body": "Add meeting days and times to keep this section easy to scan.",
+            "icon": "bi-calendar3",
+        })
+    if not section.location:
+        section_alerts.append({
+            "level": "info",
+            "title": "Location not set",
+            "body": "Add a room, online link, or meeting location for this section.",
+            "icon": "bi-geo-alt",
+        })
+    if due_soon_count:
+        section_alerts.append({
+            "level": "success",
+            "title": f"{due_soon_count} upcoming due date{'s' if due_soon_count != 1 else ''}",
+            "body": "There is student work due within the next seven days.",
+            "icon": "bi-clock",
+        })
+    completion_score = min(100, max(0, student_count * 12))
+
+    return {
         "student_count": student_count,
+        "section_enrollments": section_enrollments,
         "course_student_count": course_student_count,
         "completion_score": completion_score,
+        "assignments": assignments,
+        "activity_rows": activity_rows,
+        "assignment_count": assignment_count,
         "pending_submissions": pending_submissions,
-        "section_announcements": section_announcements,
-        "ai_requests": ai_requests,
-        "section_form": section_form,
+        "pending_submission_count": pending_submission_count,
+        "total_submission_count": total_submission_count,
+        "due_soon_count": due_soon_count,
+        "at_risk_count": at_risk_count,
+        "section_alerts": section_alerts,
     }
-    return render(request, "academics/section_detail.html", context)
+
+
+def _eligible_students_for_course(course):
+    instructor_profile = Profile.objects.filter(user=course.instructor).first()
+    grade_match = re.search(r"\d+", course.grade_level or "")
+    if not instructor_profile or not instructor_profile.school_id or not grade_match:
+        return get_user_model().objects.none()
+
+    return get_user_model().objects.filter(
+        profile__role=Profile.Role.STUDENT,
+        profile__school_id=instructor_profile.school_id,
+        profile__grade_level=int(grade_match.group()),
+        is_active=True,
+    ).select_related("profile").order_by("last_name", "first_name", "username")
+
+
+def _next_assignment_order(course, activity_section):
+    return (
+        Assignment.objects.filter(course=course, activity_section=activity_section).aggregate(max_order=Max("order"))["max_order"]
+        or 0
+    ) + 1
+
+
+def _activity_board_context(course):
+    activity_sections = list(
+        course.activity_sections.prefetch_related("assignments__submissions")
+        .order_by("order", "name")
+    )
+    activity_section_cards = []
+    for activity_section in activity_sections:
+        section_assignments = list(
+            Assignment.objects.filter(course=course, activity_section=activity_section)
+            .select_related("course_section")
+            .annotate(submission_count=Count("submissions", distinct=True))
+            .order_by("course_section__order", "order", "due_at", "title")
+        )
+        activity_section_cards.append({
+            "activity_section": activity_section,
+            "assignments": section_assignments,
+        })
+
+    other_assignments = list(
+        Assignment.objects.filter(course=course, activity_section__isnull=True)
+        .select_related("course_section")
+        .annotate(submission_count=Count("submissions", distinct=True))
+        .order_by("course_section__order", "order", "due_at", "title")
+    )
+    return {
+        "activity_section_cards": activity_section_cards,
+        "other_assignments": other_assignments,
+        "total_assignment_count": Assignment.objects.filter(course=course).count(),
+    }
+
+
+@login_required
+def section_students(request, slug, section_id):
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    context = _section_dashboard_context(course, section, can_manage)
+    context.update({
+        "profile": profile,
+        "course": course,
+        "section": section,
+        "can_manage": can_manage,
+    })
+    return render(request, "academics/section_students.html", context)
+
+
+@login_required
+def section_enrollment(request, slug, section_id):
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    if not can_manage:
+        raise PermissionDenied
+
+    eligible_students = list(_eligible_students_for_course(course))
+    eligible_student_ids = {student.id for student in eligible_students}
+
+    if request.method == "POST":
+        selected_ids = {
+            int(student_id)
+            for student_id in request.POST.getlist("selected_student_ids")
+            if student_id.isdigit()
+        }
+        selected_ids &= eligible_student_ids
+        current_ids = set(section.section_enrollments.values_list("student_id", flat=True))
+
+        with transaction.atomic():
+            remove_ids = current_ids - selected_ids
+            if remove_ids:
+                SectionEnrollment.objects.filter(section=section, student_id__in=remove_ids).delete()
+                for student_id in remove_ids:
+                    if not SectionEnrollment.objects.filter(section__course=course, student_id=student_id).exists():
+                        Enrollment.objects.filter(course=course, student_id=student_id).delete()
+
+            if selected_ids:
+                SectionEnrollment.objects.filter(section__course=course, student_id__in=selected_ids).exclude(section=section).delete()
+                for student_id in selected_ids:
+                    SectionEnrollment.objects.get_or_create(section=section, student_id=student_id)
+                    Enrollment.objects.get_or_create(course=course, student_id=student_id)
+
+        added_count = len(selected_ids - current_ids)
+        removed_count = len(current_ids - selected_ids)
+        messages.success(request, f"Roster saved. Added {added_count}, removed {removed_count}.")
+        return redirect("academics:section_students", slug=course.slug, section_id=section.id)
+
+    context = _section_dashboard_context(course, section, can_manage)
+    selected_ids = set(section.section_enrollments.values_list("student_id", flat=True))
+    context.update({
+        "profile": profile,
+        "course": course,
+        "section": section,
+        "can_manage": can_manage,
+        "available_students": [student for student in eligible_students if student.id not in selected_ids],
+        "selected_students": [student for student in eligible_students if student.id in selected_ids],
+    })
+    return render(request, "academics/section_enrollment.html", context)
+
+
+@login_required
+def section_student_detail(request, slug, section_id, student_id):
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    enrollment = get_object_or_404(
+        SectionEnrollment.objects.select_related("student", "student__profile"),
+        section=section,
+        student_id=student_id,
+    )
+    student = enrollment.student
+    submissions = list(Submission.objects.filter(
+        Q(assignment__course_section=section) | Q(assignment__course_section__isnull=True),
+        assignment__course=course,
+        student=student,
+    ).select_related("assignment").order_by("assignment__due_at", "assignment__title"))
+    submitted_assignment_ids = {submission.assignment_id for submission in submissions}
+    missing_assignments = [
+        assignment
+        for assignment in course.assignments.filter(Q(course_section=section) | Q(course_section__isnull=True)).order_by("activity_section__order", "course_section__order", "order", "due_at", "title")
+        if assignment.id not in submitted_assignment_ids
+    ]
+    graded_submissions = [submission for submission in submissions if submission.score is not None]
+    average_score = None
+    if graded_submissions:
+        average_score = round(
+            sum(float(submission.score) for submission in graded_submissions) / len(graded_submissions),
+            1,
+        )
+
+    context = _section_dashboard_context(course, section, can_manage)
+    context.update({
+        "profile": profile,
+        "course": course,
+        "section": section,
+        "can_manage": can_manage,
+        "section_enrollment": enrollment,
+        "student": student,
+        "submissions": submissions,
+        "missing_assignments": missing_assignments,
+        "submitted_count": len(submissions),
+        "missing_count": len(missing_assignments),
+        "graded_count": len(graded_submissions),
+        "average_score": average_score,
+    })
+    return render(request, "academics/section_student_detail.html", context)
+
+
+@login_required
+def section_grading(request, slug, section_id):
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    context = _section_dashboard_context(course, section, can_manage)
+    context.update({
+        "profile": profile,
+        "course": course,
+        "section": section,
+        "can_manage": can_manage,
+    })
+    return render(request, "academics/section_grading.html", context)
+
+
+@login_required
+def course_activities(request, slug):
+    course = get_object_or_404(
+        Course.objects.select_related("instructor").prefetch_related("sections"),
+        slug__iexact=slug,
+    )
+    if not _can_view_course(request.user, course):
+        raise PermissionDenied
+    profile = _profile_for(request.user)
+    can_manage = _can_manage_course(request.user, course)
+    return _render_activities_page(request, course, None, profile, can_manage)
+
+
+@login_required
+def section_activities(request, slug, section_id):
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    return _render_activities_page(request, course, section, profile, can_manage)
+
+
+def _render_activities_page(request, course, section, profile, can_manage):
+    redirect_kwargs = {"slug": course.slug}
+    redirect_name = "academics:course_activities"
+    if section:
+        redirect_name = "academics:section_activities"
+        redirect_kwargs["section_id"] = section.id
+
+    if request.method == "POST":
+        if not can_manage:
+            raise PermissionDenied
+        if request.POST.get("action") == "create_section":
+            activity_section_form = ActivitySectionForm(request.POST)
+            if activity_section_form.is_valid():
+                activity_section = activity_section_form.save(commit=False)
+                activity_section.course = course
+                activity_section.order = course.activity_sections.count() + 1
+                activity_section.save()
+                messages.success(request, f"Section {activity_section.name} created.")
+                return redirect(redirect_name, **redirect_kwargs)
+        elif request.POST.get("action") == "edit_section":
+            activity_section = get_object_or_404(
+                ActivitySection,
+                id=request.POST.get("activity_section_id"),
+                course=course,
+            )
+            activity_section_form = ActivitySectionForm(request.POST, instance=activity_section)
+            if activity_section_form.is_valid():
+                activity_section_form.save()
+                messages.success(request, f"Section {activity_section.name} updated.")
+                return redirect(redirect_name, **redirect_kwargs)
+        elif request.POST.get("action") == "delete_section":
+            activity_section = get_object_or_404(
+                ActivitySection,
+                id=request.POST.get("activity_section_id"),
+                course=course,
+            )
+            section_name = activity_section.name
+            activity_section.delete()
+            messages.success(request, f"Section {section_name} removed.")
+            return redirect(redirect_name, **redirect_kwargs)
+        else:
+            return redirect(redirect_name, **redirect_kwargs)
+    else:
+        activity_section_form = ActivitySectionForm()
+
+    context = _section_dashboard_context(course, section, can_manage) if section else {}
+    context.update(_activity_board_context(course))
+    context.update({
+        "profile": profile,
+        "course": course,
+        "section": section,
+        "can_manage": can_manage,
+        "activity_section_form": activity_section_form,
+    })
+    return render(request, "academics/section_activities.html", context)
+
+
+@login_required
+def assignment_create(request, slug):
+    course = get_object_or_404(Course.objects.prefetch_related("activity_sections", "sections"), slug__iexact=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+    profile = _profile_for(request.user)
+    initial = {}
+    section_id = request.GET.get("section")
+    if section_id and section_id.isdigit():
+        initial["activity_section"] = course.activity_sections.filter(id=int(section_id)).first()
+    course_section_id = request.GET.get("course_section")
+    if course_section_id and course_section_id.isdigit():
+        initial["course_section"] = course.sections.filter(id=int(course_section_id)).first()
+
+    if request.method == "POST":
+        assignment_form = AssignmentForm(request.POST, course=course)
+        if assignment_form.is_valid():
+            with transaction.atomic():
+                assignment = assignment_form.save(commit=False)
+                assignment.course = course
+                assignment.instructor = request.user
+                assignment.order = _next_assignment_order(course, assignment.activity_section)
+                
+                # Handle questions JSON
+                questions_json = request.POST.get('questions_json', '[]')
+                try:
+                    questions_data = json.loads(questions_json)
+                except json.JSONDecodeError:
+                    questions_data = []
+
+                total_points = sum(int(q.get('points', 0)) for q in questions_data)
+                assignment.max_score = total_points
+                
+                assignment.save()
+
+                for index, q_data in enumerate(questions_data):
+                    Question.objects.create(
+                        assignment=assignment,
+                        text=q_data.get('text', ''),
+                        question_type=q_data.get('type', 'text'),
+                        points=int(q_data.get('points', 1)),
+                        choices=q_data.get('choices', []),
+                        correct_answer=str(q_data.get('correct_answer', '')),
+                        order=index
+                    )
+
+                messages.success(request, f"{assignment.get_activity_type_display()} created.")
+                return redirect("academics:assignment_detail", slug=course.slug, assignment_id=assignment.id)
+    else:
+        assignment_form = AssignmentForm(course=course, initial=initial)
+
+    return render(request, "academics/assignment_form.html", {
+        "profile": profile,
+        "course": course,
+        "can_manage": True,
+        "assignment_form": assignment_form,
+        "questions_json": "[]",
+    })
+
+@login_required
+def assignment_edit(request, slug, assignment_id):
+    course = get_object_or_404(Course, slug__iexact=slug)
+    assignment = get_object_or_404(Assignment, id=assignment_id, course=course)
+    
+    if not _can_manage_course(request.user, course) and assignment.instructor != request.user:
+        raise PermissionDenied
+        
+    profile = _profile_for(request.user)
+
+    if request.method == "POST":
+        assignment_form = AssignmentForm(request.POST, instance=assignment, course=course)
+        if assignment_form.is_valid():
+            with transaction.atomic():
+                assignment = assignment_form.save(commit=False)
+                
+                questions_json = request.POST.get('questions_json', '[]')
+                try:
+                    questions_data = json.loads(questions_json)
+                except json.JSONDecodeError:
+                    questions_data = []
+
+                total_points = sum(int(q.get('points', 0)) for q in questions_data)
+                assignment.max_score = total_points
+                assignment.save()
+
+                # Clear existing questions and recreate them
+                assignment.questions.all().delete()
+
+                for index, q_data in enumerate(questions_data):
+                    Question.objects.create(
+                        assignment=assignment,
+                        text=q_data.get('text', ''),
+                        question_type=q_data.get('type', 'text'),
+                        points=int(q_data.get('points', 1)),
+                        choices=q_data.get('choices', []),
+                        correct_answer=str(q_data.get('correct_answer', '')),
+                        order=index
+                    )
+
+                messages.success(request, f"{assignment.get_activity_type_display()} updated.")
+                return redirect("academics:assignment_detail", slug=course.slug, assignment_id=assignment.id)
+    else:
+        assignment_form = AssignmentForm(instance=assignment, course=course)
+        
+    existing_questions = []
+    for q in assignment.questions.all():
+        existing_questions.append({
+            'text': q.text,
+            'type': q.question_type,
+            'points': q.points,
+            'choices': q.choices,
+            'correct_answer': q.correct_answer,
+        })
+
+    return render(request, "academics/assignment_form.html", {
+        "profile": profile,
+        "course": course,
+        "can_manage": True,
+        "assignment": assignment,
+        "assignment_form": assignment_form,
+        "questions_json": json.dumps(existing_questions),
+    })
+
+@login_required
+def assignment_delete(request, slug, assignment_id):
+    course = get_object_or_404(Course, slug__iexact=slug)
+    assignment = get_object_or_404(Assignment, id=assignment_id, course=course)
+    
+    if not _can_manage_course(request.user, course) and assignment.instructor != request.user:
+        raise PermissionDenied
+        
+    if request.method == "POST":
+        activity_type = assignment.get_activity_type_display()
+        assignment.delete()
+        messages.success(request, f"{activity_type} deleted.")
+        return redirect("academics:course_activities", slug=course.slug)
+        
+    return redirect("academics:assignment_detail", slug=course.slug, assignment_id=assignment.id)
+
+
+@login_required
+def assignment_detail(request, slug, assignment_id):
+    course = get_object_or_404(Course.objects.prefetch_related("activity_sections", "sections"), slug__iexact=slug)
+    if not _can_view_course(request.user, course):
+        raise PermissionDenied
+    assignment = get_object_or_404(
+        Assignment.objects.select_related("course", "course_section", "activity_section").prefetch_related("submissions"),
+        id=assignment_id,
+        course=course,
+    )
+    profile = _profile_for(request.user)
+    can_manage = _can_manage_course(request.user, course)
+
+    if request.method == "POST":
+        if not can_manage:
+            raise PermissionDenied
+        if request.POST.get("action") == "copy_assignment":
+            target_section_id = request.POST.get("target_section")
+            target_section = get_object_or_404(CourseSection, id=target_section_id, course=course)
+            copied_assignment, created = Assignment.objects.update_or_create(
+                course=course,
+                course_section=target_section,
+                activity_section=assignment.activity_section,
+                title=assignment.title,
+                defaults={
+                    "activity_type": assignment.activity_type,
+                    "instructions": assignment.instructions,
+                    "due_at": assignment.due_at,
+                    "max_score": assignment.max_score,
+                    "order": _next_assignment_order(course, assignment.activity_section),
+                },
+            )
+            action_word = "copied to" if created else "updated in"
+            messages.success(request, f"{assignment.title} {action_word} {target_section.name}.")
+            return redirect("academics:assignment_detail", slug=course.slug, assignment_id=copied_assignment.id)
+        if request.POST.get("action") == "delete_assignment":
+            title = assignment.title
+            redirect_kwargs = {"slug": course.slug}
+            if assignment.course_section:
+                section_id = assignment.course_section_id
+                messages.success(request, f"{title} deleted.")
+                assignment.delete()
+                return redirect("academics:section_activities", slug=course.slug, section_id=section_id)
+            assignment.delete()
+            messages.success(request, f"{title} deleted.")
+            return redirect("academics:course_activities", **redirect_kwargs)
+
+    if assignment.course_section:
+        section_enrollments = SectionEnrollment.objects.filter(section=assignment.course_section).select_related(
+            "student", "student__profile"
+        ).order_by("student__last_name", "student__first_name", "student__username")
+        students = [enrollment.student for enrollment in section_enrollments]
+    else:
+        course_enrollments = Enrollment.objects.filter(course=course).select_related(
+            "student", "student__profile"
+        ).order_by("student__last_name", "student__first_name", "student__username")
+        students = [enrollment.student for enrollment in course_enrollments]
+    expected_label = assignment.activity_section.name if assignment.activity_section else "Other assignments"
+
+    submissions = list(
+        Submission.objects.filter(assignment=assignment)
+        .select_related("student", "student__profile")
+        .order_by("student__last_name", "student__first_name", "student__username")
+    )
+    submissions_by_student_id = {submission.student_id: submission for submission in submissions}
+    submission_rows = [
+        {
+            "student": student,
+            "submission": submissions_by_student_id.get(student.id),
+        }
+        for student in students
+    ]
+    copy_sections = course.sections.exclude(id=assignment.course_section_id).order_by("order", "name")
+
+    return render(request, "academics/assignment_detail.html", {
+        "profile": profile,
+        "course": course,
+        "assignment": assignment,
+        "can_manage": can_manage,
+        "submission_rows": submission_rows,
+        "submitted_count": len(submissions),
+        "expected_count": len(students),
+        "expected_label": expected_label,
+        "copy_sections": copy_sections,
+    })
+
+
+@login_required
+def assignment_reorder(request, slug):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required."}, status=405)
+    course = get_object_or_404(Course, slug__iexact=slug)
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    assignments = payload.get("assignments", [])
+    section_ids = {
+        int(item["section_id"])
+        for item in assignments
+        if str(item.get("section_id", "")).isdigit()
+    }
+    valid_sections = {
+        activity_section.id: activity_section
+        for activity_section in ActivitySection.objects.filter(course=course, id__in=section_ids)
+    }
+
+    with transaction.atomic():
+        for item in assignments:
+            assignment_id = item.get("id")
+            if not str(assignment_id).isdigit():
+                continue
+            section_id = item.get("section_id")
+            target_section = None
+            if str(section_id).isdigit():
+                target_section = valid_sections.get(int(section_id))
+                if target_section is None:
+                    continue
+            Assignment.objects.filter(course=course, id=int(assignment_id)).update(
+                activity_section=target_section,
+                order=int(item.get("order", 0)),
+            )
+
+    return JsonResponse({"ok": True})
 
 
 @login_required

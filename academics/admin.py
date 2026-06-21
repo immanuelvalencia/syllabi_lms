@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    ActivitySection,
     AiToolRequest,
     Announcement,
     Assignment,
@@ -53,6 +54,13 @@ class CourseSectionAdmin(admin.ModelAdmin):
     readonly_fields = ("public_id",)
 
 
+@admin.register(ActivitySection)
+class ActivitySectionAdmin(admin.ModelAdmin):
+    list_display = ("name", "course", "grading_weight", "order")
+    list_filter = ("course",)
+    search_fields = ("name", "course__code", "course__title")
+
+
 @admin.register(SectionEnrollment)
 class SectionEnrollmentAdmin(admin.ModelAdmin):
     list_display = ("student", "section", "enrolled_at")
@@ -76,9 +84,9 @@ class LessonAdmin(admin.ModelAdmin):
 
 @admin.register(Assignment)
 class AssignmentAdmin(admin.ModelAdmin):
-    list_display = ("course", "title", "due_at", "max_score")
-    list_filter = ("course", "due_at")
-    search_fields = ("title", "course__code", "course__title")
+    list_display = ("course", "course_section", "activity_section", "activity_type", "title", "due_at", "max_score", "order")
+    list_filter = ("course", "course_section", "activity_section", "activity_type", "due_at")
+    search_fields = ("title", "course__code", "course__title", "course_section__name", "activity_section__name")
 
 
 @admin.register(Submission)

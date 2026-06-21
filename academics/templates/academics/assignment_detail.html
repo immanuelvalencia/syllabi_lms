@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}{{ assignment.title }} | {{ course.title }}{% endblock %}
+
+{% block page_header %}
+<div class="mb-4">
+    <a href="{% url 'academics:course_activities' course.slug %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+        <i class="bi bi-arrow-left"></i> Back to activities
+    </a>
+</div>
+<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold uppercase tracking-widest text-green-600">{{ course.code }} / {{ expected_label }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{{ assignment.title }}</h1>
+    </div>
+    {% if can_manage %}
+        <div class="flex flex-col gap-3 sm:min-w-80">
+            <form method="post" class="flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="copy_assignment">
+                <select name="target_section" required class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900">
+                    <option value="">Copy to course section</option>
+                    {% for target_section in copy_sections %}
+                        <option value="{{ target_section.id }}">{{ target_section.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" {% if not copy_sections %}disabled{% endif %} class="inline-flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                    <i class="bi bi-copy"></i> Copy
+                </button>
+            </form>
+            <a href="{% url 'academics:assignment_edit' course.slug assignment.id %}" class="inline-flex h-10 w-full items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                <i class="bi bi-pencil"></i> Edit Assignment
+            </a>
+            <form method="post" action="{% url 'academics:assignment_delete' course.slug assignment.id %}" onsubmit="return confirm('Delete this assignment? Submitted work for this assignment will also be removed.');">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
+                    <i class="bi bi-trash"></i> Delete Assignment
+                </button>
+            </form>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="p-6 sm:p-8">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Type</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{{ assignment.get_activity_type_display }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Due</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{% if assignment.due_at %}{{ assignment.due_at|date:"M j, Y" }}{% else %}No due date{% endif %}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Submissions</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{{ submitted_count }} / {{ expected_count }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Course Section</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{% if assignment.course_section %}{{ assignment.course_section.name }}{% else %}All sections{% endif %}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Points</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{{ assignment.max_score }}</div>
+                </div>
+            </div>
+
+            {% if assignment.instructions %}
+                <div class="mt-6 rounded-xl border border-gray-200 p-4">
+                    <h2 class="text-sm font-semibold text-gray-900">Instructions</h2>
+                    <div class="mt-2 whitespace-pre-line text-sm text-gray-600">{{ assignment.instructions }}</div>
+                </div>
+            {% endif %}
+
+            {% if assignment.questions.exists %}
+                <div class="mt-6 rounded-xl border border-gray-200 p-4">
+                    <h2 class="text-sm font-semibold text-gray-900 mb-4">Questions</h2>
+                    <div class="space-y-4">
+                        {% for question in assignment.questions.all %}
+                        <div class="rounded-md bg-gray-50 p-4 border border-gray-100">
+                            <div class="flex justify-between items-start">
+                                <h3 class="font-medium text-gray-900">{{ forloop.counter }}. {{ question.text }}</h3>
+                                <span class="text-sm text-gray-500 font-medium">{{ question.points }} pt{{ question.points|pluralize }}</span>
+                            </div>
+                            
+                            <div class="mt-2 pl-4 border-l-2 border-gray-200">
+                                {% if question.question_type == 'multiple_choice' %}
+                                    <ul class="list-disc pl-4 text-sm text-gray-600 space-y-1">
+                                        {% for choice in question.choices %}
+                                            <li class="{% if choice == question.correct_answer %}font-bold text-green-700{% endif %}">
+                                                {{ choice }} {% if choice == question.correct_answer %}<i class="bi bi-check-circle-fill ml-1"></i>{% endif %}
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% elif question.question_type == 'true_false' %}
+                                    <p class="text-sm font-bold text-green-700">Answer: {{ question.correct_answer }}</p>
+                                {% else %}
+                                    <p class="text-sm font-bold text-green-700">Answer: {{ question.correct_answer|default:"(Open ended)" }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="border-b border-gray-100 p-6 sm:p-8">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Submitted Work</h2>
+                    <p class="mt-1 text-sm text-gray-500">{{ expected_label }}</p>
+                </div>
+                <span class="w-fit rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ submitted_count }} submitted</span>
+            </div>
+        </div>
+
+        {% if submission_rows %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Student</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">ID Number</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Submitted</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Score</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white">
+                        {% for row in submission_rows %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-4 font-semibold text-gray-900">
+                                    {% if row.student.last_name %}
+                                        {{ row.student.last_name }}{% if row.student.first_name %}, {{ row.student.first_name }}{% endif %}
+                                    {% else %}
+                                        {{ row.student.get_full_name|default:row.student.username }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-4 text-gray-600">{{ row.student.profile.id_number|default:"No ID" }}</td>
+                                <td class="px-4 py-4 text-gray-600">
+                                    {% if row.submission %}{{ row.submission.submitted_at|date:"M j, Y g:i A" }}{% else %}No submission{% endif %}
+                                </td>
+                                <td class="px-4 py-4 text-gray-900">
+                                    {% if row.submission and row.submission.score != None %}
+                                        {{ row.submission.score }} / {{ assignment.max_score }}
+                                    {% else %}
+                                        Not scored
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-4">
+                                    {% if row.submission and row.submission.score != None %}
+                                        <span class="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Scored</span>
+                                    {% elif row.submission %}
+                                        <span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">To grade</span>
+                                    {% else %}
+                                        <span class="rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">Missing</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-12 text-center">
+                <i class="bi bi-people text-4xl text-gray-300"></i>
+                <h3 class="mt-3 text-sm font-semibold text-gray-900">No enrolled students</h3>
+                <p class="mt-1 text-sm text-gray-500">Submissions will appear after students are enrolled.</p>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

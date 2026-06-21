@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block title %}Activities | {{ course.title }}{% endblock %}
+
+{% block page_header %}
+<div class="mb-4">
+    {% if section %}
+        <a href="{{ section.get_absolute_url }}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+            <i class="bi bi-arrow-left"></i> Back to section overview
+        </a>
+    {% else %}
+        <a href="{{ course.get_absolute_url }}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+            <i class="bi bi-arrow-left"></i> Back to course
+        </a>
+    {% endif %}
+</div>
+<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold uppercase tracking-widest text-green-600">{{ course.code }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Activities</h1>
+    </div>
+    {% if can_manage %}
+        <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-create-section'))" class="inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-white px-4 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                <i class="bi bi-plus-lg"></i> Create Section
+            </button>
+            <a href="{% url 'academics:assignment_create' course.slug %}{% if section %}?course_section={{ section.id }}{% endif %}" class="inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                <i class="bi bi-journal-plus"></i> Create Assignment
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div
+    class="space-y-8"
+    x-data="{ createSectionOpen: {% if activity_section_form.errors %}true{% else %}false{% endif %} }"
+    @open-create-section.window="createSectionOpen = true"
+>
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="border-b border-gray-100 p-6 sm:p-8">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">{{ total_assignment_count }} total</h2>
+                    <p class="mt-1 text-sm text-gray-500">Activities, quizzes, and assignments grouped by section.</p>
+                </div>
+            </div>
+        </div>
+
+        <div
+            class="grid gap-4 bg-gray-50 p-4 sm:p-6 xl:grid-cols-2"
+            data-assignment-board
+            data-reorder-url="{% url 'academics:assignment_reorder' course.slug %}"
+            data-csrf="{{ csrf_token }}"
+        >
+            {% for card in activity_section_cards %}
+                <section class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-900/5">
+                    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-base font-semibold text-gray-900">{{ card.activity_section.name }}</h3>
+                            </div>
+                            <p class="mt-1 text-sm text-gray-500">{{ card.activity_section.grading_weight|floatformat:2 }}% weight</p>
+                        </div>
+                        {% if can_manage %}
+                            <div class="flex items-center gap-2">
+                                <a href="{% url 'academics:assignment_create' course.slug %}?section={{ card.activity_section.id }}" class="inline-flex h-8 items-center gap-x-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                    <i class="bi bi-plus-lg"></i> Add
+                                </a>
+                                <details class="group relative">
+                                    <summary class="inline-flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md bg-white text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                        <i class="bi bi-three-dots-vertical"></i>
+                                    </summary>
+                                    <div class="absolute right-0 z-20 mt-2 w-48 rounded-md bg-white py-1 shadow-lg ring-1 ring-gray-900/5">
+                                        <button type="button" @click="$dispatch('open-edit-section', { id: {{ card.activity_section.id }}, name: '{{ card.activity_section.name|escapejs }}', weight: {{ card.activity_section.grading_weight }} })" class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Manage</button>
+                                    </div>
+                                </details>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="min-h-40 space-y-3 rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-2" data-assignment-list data-section-id="{{ card.activity_section.id }}">
+                        {% for assignment in card.assignments %}
+                            {% include "academics/partials/assignment_card.html" with assignment=assignment course=course %}
+                        {% empty %}
+                            <div class="assignment-empty p-6 text-center text-sm text-gray-500">No assignments</div>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endfor %}
+
+            <section class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-900/5">
+                <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">Other Assignments</h3>
+                        <p class="mt-1 text-sm text-gray-500">No section selected</p>
+                    </div>
+                    {% if can_manage %}
+                        <a href="{% url 'academics:assignment_create' course.slug %}" class="inline-flex h-8 w-fit items-center gap-x-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                            <i class="bi bi-plus-lg"></i> Add
+                        </a>
+                    {% endif %}
+                </div>
+
+                <div class="min-h-40 space-y-3 rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-2" data-assignment-list data-section-id="">
+                    {% for assignment in other_assignments %}
+                        {% include "academics/partials/assignment_card.html" with assignment=assignment course=course %}
+                    {% empty %}
+                        <div class="assignment-empty p-6 text-center text-sm text-gray-500">No assignments</div>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+    </section>
+
+    {% if can_manage %}
+    <div x-show="createSectionOpen" x-cloak class="relative z-50" aria-labelledby="create-section-title" role="dialog" aria-modal="true">
+        <div x-show="createSectionOpen" x-transition.opacity class="fixed inset-0 bg-gray-900/80"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div x-show="createSectionOpen" @click.away="createSectionOpen = false" x-transition class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left text-gray-900 shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+                    <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+                        <button type="button" @click="createSectionOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+                            <span class="sr-only">Close</span>
+                            <i class="bi bi-x text-2xl"></i>
+                        </button>
+                    </div>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="create_section">
+                        <h3 class="mb-6 text-xl font-bold leading-6 text-gray-900" id="create-section-title">Create Section</h3>
+
+                        <div class="space-y-4">
+                            {% if activity_section_form.non_field_errors %}
+                                <div class="rounded-md border border-red-200 bg-red-50 p-4">
+                                    <div class="text-sm text-red-700">{{ activity_section_form.non_field_errors }}</div>
+                                </div>
+                            {% endif %}
+
+                            <div>
+                                <label for="{{ activity_section_form.name.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ activity_section_form.name.label }}</label>
+                                <div class="mt-1">{{ activity_section_form.name }}</div>
+                                {% for error in activity_section_form.name.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                            </div>
+
+                            <div>
+                                <label for="{{ activity_section_form.grading_weight.id_for_label }}" class="block text-sm font-medium leading-6 text-gray-900">{{ activity_section_form.grading_weight.label }}</label>
+                                <div class="mt-1">{{ activity_section_form.grading_weight }}</div>
+                                {% for error in activity_section_form.grading_weight.errors %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="mt-6 flex items-center justify-end gap-x-4 border-t border-gray-100 pt-4">
+                            <button type="button" @click="createSectionOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                            <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">Create</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-data="{ editSectionOpen: false, editId: '', editName: '', editWeight: '' }"
+         @open-edit-section.window="editSectionOpen = true; editId = $event.detail.id; editName = $event.detail.name; editWeight = $event.detail.weight;">
+        
+        <div x-show="editSectionOpen" x-cloak class="relative z-50" aria-labelledby="edit-section-title" role="dialog" aria-modal="true">
+            <div x-show="editSectionOpen" x-transition.opacity class="fixed inset-0 bg-gray-900/80"></div>
+            <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+                <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                    <div x-show="editSectionOpen" @click.away="editSectionOpen = false" x-transition class="relative transform overflow-hidden rounded-2xl bg-white px-4 pb-4 pt-5 text-left text-gray-900 shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+                        <div class="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
+                            <button type="button" @click="editSectionOpen = false" class="rounded-md bg-white text-gray-400 hover:text-gray-500">
+                                <span class="sr-only">Close</span>
+                                <i class="bi bi-x text-2xl"></i>
+                            </button>
+                        </div>
+                        
+                        <h3 class="mb-6 text-xl font-bold leading-6 text-gray-900" id="edit-section-title">Manage Section</h3>
+
+                        <form method="post" class="space-y-4">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="edit_section">
+                            <input type="hidden" name="activity_section_id" x-model="editId">
+                            
+                            <div>
+                                <label class="block text-sm font-medium leading-6 text-gray-900">Name</label>
+                                <input name="name" x-model="editName" required class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium leading-6 text-gray-900">Weight (%)</label>
+                                <input name="grading_weight" type="number" step="0.01" min="0" max="100" x-model="editWeight" required class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900">
+                            </div>
+
+                            <div class="mt-6 flex items-center justify-end gap-x-4 border-t border-gray-100 pt-4">
+                                <button type="button" @click="editSectionOpen = false" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</button>
+                                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">Save Changes</button>
+                            </div>
+                        </form>
+
+                        <form method="post" class="mt-6 border-t border-red-100 pt-6" onsubmit="return confirm('Remove this activity section? Assignments will move to Other Assignments.');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_section">
+                            <input type="hidden" name="activity_section_id" x-model="editId">
+                            <button type="submit" class="inline-flex h-9 w-full items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
+                                <i class="bi bi-trash mr-2"></i> Delete Section
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const board = document.querySelector("[data-assignment-board]");
+    if (!board) return;
+
+    let draggedCard = null;
+    const lists = Array.from(board.querySelectorAll("[data-assignment-list]"));
+
+    function removeEmptyState(list) {
+        const empty = list.querySelector(".assignment-empty");
+        if (empty) empty.remove();
+    }
+
+    function persistOrder() {
+        const assignments = [];
+        lists.forEach((list) => {
+            Array.from(list.querySelectorAll("[data-assignment-id]")).forEach((card, index) => {
+                assignments.push({
+                    id: card.dataset.assignmentId,
+                    section_id: list.dataset.sectionId,
+                    order: index + 1
+                });
+            });
+        });
+
+        fetch(board.dataset.reorderUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": board.dataset.csrf
+            },
+            body: JSON.stringify({ assignments })
+        });
+    }
+
+    board.addEventListener("dragstart", function (event) {
+        const card = event.target.closest("[data-assignment-id]");
+        if (!card) return;
+        draggedCard = card;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", card.dataset.assignmentId);
+        card.classList.add("opacity-50");
+    });
+
+    board.addEventListener("dragend", function () {
+        if (draggedCard) draggedCard.classList.remove("opacity-50");
+        draggedCard = null;
+    });
+
+    lists.forEach((list) => {
+        list.addEventListener("dragover", function (event) {
+            event.preventDefault();
+            const afterElement = Array.from(list.querySelectorAll("[data-assignment-id]:not(.opacity-50)")).find((card) => {
+                const box = card.getBoundingClientRect();
+                return event.clientY < box.top + box.height / 2;
+            });
+            if (!draggedCard) return;
+            removeEmptyState(list);
+            if (afterElement) {
+                list.insertBefore(draggedCard, afterElement);
+            } else {
+                list.appendChild(draggedCard);
+            }
+        });
+
+        list.addEventListener("drop", function (event) {
+            event.preventDefault();
+            persistOrder();
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Grading | {{ section.name }}{% endblock %}
+
+{% block page_header %}
+<div class="mb-4">
+    <a href="{{ section.get_absolute_url }}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+        <i class="bi bi-arrow-left"></i> Back to section overview
+    </a>
+</div>
+<div>
+    <p class="text-sm font-semibold uppercase tracking-widest text-green-600">{{ course.code }} / {{ section.name }}</p>
+    <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">To Grade</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+    <div class="p-6 sm:p-8">
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900">{{ pending_submission_count }} pending</h2>
+            <p class="mt-1 text-sm text-gray-500">Submitted work from this section that still needs a score.</p>
+        </div>
+
+        <div class="divide-y divide-gray-100">
+            {% for submission in pending_submissions %}
+                <article class="py-4">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-900">{{ submission.assignment.title }}</h3>
+                            <p class="mt-1 text-sm text-gray-500">{{ submission.student.get_full_name|default:submission.student.username }} submitted {{ submission.submitted_at|date:"M j, Y g:i A" }}</p>
+                        </div>
+                        <span class="w-fit rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">Needs score</span>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">
+                    No submitted work is waiting for grading.
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}

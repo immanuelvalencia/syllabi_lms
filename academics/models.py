@@ -99,6 +99,21 @@ class CourseSection(models.Model):
         return reverse("academics:section_detail", args=[self.course.slug or self.course.code, self.id])
 
 
+class ActivitySection(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="activity_sections")
+    name = models.CharField(max_length=120)
+    grading_weight = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    order = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["course", "order", "name"]
+        unique_together = [("course", "name")]
+
+    def __str__(self):
+        return f"{self.course.code} - {self.name}"
+
+
 class SectionEnrollment(models.Model):
     section = models.ForeignKey(
         CourseSection,
@@ -164,15 +179,44 @@ class Enrollment(models.Model):
 
 
 class Assignment(models.Model):
+    class ActivityType(models.TextChoices):
+        ACTIVITY = "activity", "Activity"
+        QUIZ = "quiz", "Quiz"
+        ASSIGNMENT = "assignment", "Assignment"
+
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="assignments")
+    course_section = models.ForeignKey(
+        CourseSection,
+        on_delete=models.SET_NULL,
+        related_name="assignments",
+        null=True,
+        blank=True,
+    )
+    activity_section = models.ForeignKey(
+        ActivitySection,
+        on_delete=models.SET_NULL,
+        related_name="assignments",
+        null=True,
+        blank=True,
+    )
+    instructor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="assignments_created",
+        null=True,
+        blank=True,
+    )
+    activity_type = models.CharField(max_length=20, choices=ActivityType.choices, default=ActivityType.ASSIGNMENT)
     title = models.CharField(max_length=180)
     instructions = models.TextField(blank=True)
+    time_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
     due_at = models.DateTimeField(null=True, blank=True)
-    max_score = models.PositiveIntegerField(default=100)
+    max_score = models.PositiveIntegerField(default=0)
+    order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["due_at", "title"]
+        ordering = ["activity_section__order", "course_section__order", "order", "due_at", "title"]
 
     def __str__(self):
         return f"{self.course.code}: {self.title}"
@@ -182,6 +226,28 @@ class Assignment(models.Model):
         if not self.due_at:
             return False
         return timezone.now() <= self.due_at <= timezone.now() + timedelta(days=7)
+
+
+class Question(models.Model):
+    class QuestionType(models.TextChoices):
+        MULTIPLE_CHOICE = "multiple_choice", "Multiple Choice"
+        TRUE_FALSE = "true_false", "True or False"
+        TEXT = "text", "Text Field"
+        NUMBER = "number", "Number Field"
+
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name="questions")
+    text = models.TextField()
+    question_type = models.CharField(max_length=20, choices=QuestionType.choices)
+    points = models.PositiveIntegerField(default=1)
+    choices = models.JSONField(default=list, blank=True)
+    correct_answer = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.assignment.title} - Question {self.order}"
 
 
 class Submission(models.Model):

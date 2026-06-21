@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.get_full_name|default:student.username }} | {{ section.name }}{% endblock %}
+
+{% block page_header %}
+<div class="mb-4">
+    <a href="{% url 'academics:section_students' course.slug section.id %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+        <i class="bi bi-arrow-left"></i> Back to students
+    </a>
+</div>
+<div>
+    <p class="text-sm font-semibold uppercase tracking-widest text-green-600">{{ course.code }} / {{ section.name }}</p>
+    <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+        {% if student.last_name %}
+            {{ student.last_name }}{% if student.first_name %}, {{ student.first_name }}{% endif %}
+        {% else %}
+            {{ student.get_full_name|default:student.username }}
+        {% endif %}
+    </h1>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="p-6 sm:p-8">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">ID Number</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{{ student.profile.id_number|default:"No ID" }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Grade</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{{ student.profile.grade_level|default:"Not set" }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Submitted</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{{ submitted_count }}</div>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-500">Average Score</span>
+                    <div class="mt-2 text-xl font-bold text-gray-900">{% if graded_count %}{{ average_score }}{% else %}No scores{% endif %}</div>
+                </div>
+            </div>
+
+            <div class="mt-6 grid gap-4 lg:grid-cols-3">
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h2 class="text-sm font-semibold text-gray-900">Contact</h2>
+                    <p class="mt-2 text-sm text-gray-600">{{ student.email|default:"No email" }}</p>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h2 class="text-sm font-semibold text-gray-900">School</h2>
+                    <p class="mt-2 text-sm text-gray-600">{{ student.profile.school.name|default:"Not set" }}</p>
+                </div>
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <h2 class="text-sm font-semibold text-gray-900">Enrolled</h2>
+                    <p class="mt-2 text-sm text-gray-600">{{ section_enrollment.enrolled_at|date:"M j, Y" }}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="border-b border-gray-100 p-6 sm:p-8">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Submitted Work</h2>
+                    <p class="mt-1 text-sm text-gray-500">Course activity submitted by this student.</p>
+                </div>
+                <span class="w-fit rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ submitted_count }} submitted</span>
+            </div>
+        </div>
+
+        {% if submissions %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Activity</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Submitted</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Score</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white">
+                        {% for submission in submissions %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-4">
+                                    <div class="font-semibold text-gray-900">{{ submission.assignment.title }}</div>
+                                    <div class="mt-1 text-xs text-gray-500">{{ submission.assignment.get_activity_type_display }}</div>
+                                </td>
+                                <td class="px-4 py-4 text-gray-600">{{ submission.submitted_at|date:"M j, Y g:i A" }}</td>
+                                <td class="px-4 py-4 text-gray-900">
+                                    {% if submission.score != None %}
+                                        {{ submission.score }} / {{ submission.assignment.max_score }}
+                                    {% else %}
+                                        Not scored
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-4">
+                                    {% if submission.score != None %}
+                                        <span class="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Scored</span>
+                                    {% else %}
+                                        <span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">To grade</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-12 text-center">
+                <i class="bi bi-journal-text text-4xl text-gray-300"></i>
+                <h3 class="mt-3 text-sm font-semibold text-gray-900">No submitted work</h3>
+                <p class="mt-1 text-sm text-gray-500">This student has not submitted course activities yet.</p>
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+        <div class="border-b border-gray-100 p-6 sm:p-8">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Not Submitted</h2>
+                    <p class="mt-1 text-sm text-gray-500">Course activity without a submission from this student.</p>
+                </div>
+                <span class="w-fit rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ missing_count }} missing</span>
+            </div>
+        </div>
+
+        <div class="divide-y divide-gray-100">
+            {% for assignment in missing_assignments %}
+                <article class="p-4 sm:px-8">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-900">{{ assignment.title }}</h3>
+                            <p class="mt-1 text-sm text-gray-500">
+                                {{ assignment.get_activity_type_display }}
+                                {% if assignment.due_at %}due {{ assignment.due_at|date:"M j, Y g:i A" }}{% else %}with no due date{% endif %}
+                            </p>
+                        </div>
+                        <span class="w-fit rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ assignment.max_score }} pts</span>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="p-8 text-center text-sm text-gray-500">
+                    No missing course activity.
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

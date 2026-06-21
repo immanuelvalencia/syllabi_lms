@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Students | {{ section.name }}{% endblock %}
+
+{% block page_header %}
+<div class="mb-4">
+    <a href="{{ section.get_absolute_url }}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+        <i class="bi bi-arrow-left"></i> Back to section overview
+    </a>
+</div>
+<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold uppercase tracking-widest text-green-600">{{ course.code }} / {{ section.name }}</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Students</h1>
+    </div>
+    {% if can_manage %}
+        <a href="{% url 'academics:section_enrollment' course.slug section.id %}" class="inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+            <i class="bi bi-people"></i> Manage Students
+        </a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
+    <div class="border-b border-gray-100 p-6 sm:p-8">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <h2 class="text-2xl font-bold tracking-tight text-gray-900">{{ student_count }} enrolled</h2>
+                <p class="mt-1 text-sm text-gray-500">Click a student to view their section profile.</p>
+            </div>
+        </div>
+    </div>
+
+    {% if section_enrollments %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Student</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">ID Number</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Email</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Grade</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Enrolled</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 bg-white">
+                    {% for enrollment in section_enrollments %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-4">
+                                <a href="{% url 'academics:section_student_detail' course.slug section.id enrollment.student.id %}" class="font-semibold text-green-700 hover:text-green-600">
+                                    {% if enrollment.student.last_name %}
+                                        {{ enrollment.student.last_name }}{% if enrollment.student.first_name %}, {{ enrollment.student.first_name }}{% endif %}
+                                    {% else %}
+                                        {{ enrollment.student.get_full_name|default:enrollment.student.username }}
+                                    {% endif %}
+                                </a>
+                            </td>
+                            <td class="px-4 py-4 text-gray-600">{{ enrollment.student.profile.id_number|default:"No ID" }}</td>
+                            <td class="px-4 py-4 text-gray-600">{{ enrollment.student.email|default:"No email" }}</td>
+                            <td class="px-4 py-4 text-gray-600">{{ enrollment.student.profile.grade_level|default:"Not set" }}</td>
+                            <td class="px-4 py-4 text-gray-600">{{ enrollment.enrolled_at|date:"M j, Y" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="p-12 text-center">
+            <i class="bi bi-people text-4xl text-gray-300"></i>
+            <h3 class="mt-3 text-sm font-semibold text-gray-900">No students enrolled</h3>
+            <p class="mt-1 text-sm text-gray-500">Enroll students to start building this section roster.</p>
+            {% if can_manage %}
+                <a href="{% url 'academics:section_enrollment' course.slug section.id %}" class="mt-5 inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                    <i class="bi bi-people"></i> Manage Students
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

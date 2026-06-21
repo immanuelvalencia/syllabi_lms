@@ -1,8 +1,10 @@
+import re
+
 from django import forms
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from .models import Course, CourseMaterial, CourseSection, Profile
+from .models import ActivitySection, Assignment, Course, CourseMaterial, CourseSection, Profile
 
 
 class CourseForm(forms.ModelForm):
@@ -78,13 +80,30 @@ class CourseSectionForm(forms.ModelForm):
 class SectionEnrollmentForm(forms.Form):
     student = forms.ModelChoiceField(queryset=get_user_model().objects.none())
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, course=None, section=None, **kwargs):
         super().__init__(*args, **kwargs)
         User = get_user_model()
-        self.fields["student"].queryset = User.objects.filter(
+        queryset = User.objects.filter(
             profile__role=Profile.Role.STUDENT,
             is_active=True,
-        ).order_by("first_name", "last_name", "username")
+        )
+        if course:
+            instructor_profile = Profile.objects.filter(user=course.instructor).first()
+            if instructor_profile and instructor_profile.school_id:
+                queryset = queryset.filter(profile__school_id=instructor_profile.school_id)
+            else:
+                queryset = queryset.none()
+
+            grade_match = re.search(r"\d+", course.grade_level or "")
+            if grade_match:
+                queryset = queryset.filter(profile__grade_level=int(grade_match.group()))
+            else:
+                queryset = queryset.none()
+
+            if section:
+                queryset = queryset.exclude(section_enrollments__section=section)
+
+        self.fields["student"].queryset = queryset.distinct().order_by("first_name", "last_name", "username")
         self.fields["student"].widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
 
 class CourseMaterialForm(forms.ModelForm):
@@ -97,6 +116,58 @@ class CourseMaterialForm(forms.ModelForm):
         for field_name, field in self.fields.items():
             if field_name == "file":
                 field.widget.attrs.setdefault("class", "block w-full text-sm text-gray-900 border border-gray-300 rounded-md cursor-pointer bg-gray-50 focus:outline-none")
+            else:
+                field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
+
+
+class ActivitySectionForm(forms.ModelForm):
+    class Meta:
+        model = ActivitySection
+        fields = ["name", "grading_weight"]
+        labels = {
+            "grading_weight": "Grading weight",
+        }
+        widgets = {
+            "grading_weight": forms.NumberInput(attrs={"min": "0", "max": "100", "step": "0.01"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
+
+
+class AssignmentForm(forms.ModelForm):
+    class Meta:
+        model = Assignment
+        fields = ["activity_type", "activity_section", "course_section", "title", "instructions", "due_at", "time_limit_minutes"]
+        labels = {
+            "activity_type": "Type",
+            "activity_section": "Section",
+            "course_section": "Course section",
+            "due_at": "Due date",
+            "time_limit_minutes": "Time limit (minutes)",
+        }
+        widgets = {
+            "instructions": forms.Textarea(attrs={"rows": 4}),
+            "due_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        }
+
+    def __init__(self, *args, course=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["activity_section"].required = False
+        self.fields["activity_section"].empty_label = "Other assignments"
+        self.fields["course_section"].required = False
+        self.fields["course_section"].empty_label = "All course sections"
+        if course:
+            self.fields["activity_section"].queryset = course.activity_sections.all().order_by("order", "name")
+            self.fields["course_section"].queryset = course.sections.all().order_by("order", "name")
+        else:
+            self.fields["activity_section"].queryset = ActivitySection.objects.none()
+            self.fields["course_section"].queryset = CourseSection.objects.none()
+        for field_name, field in self.fields.items():
+            if field_name == "instructions":
+                field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
             else:
                 field.widget.attrs.setdefault("class", "block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6")
 
