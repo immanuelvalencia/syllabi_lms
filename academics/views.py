@@ -623,6 +623,87 @@ def section_detail(request, slug, section_id):
     return render(request, "academics/section_detail.html", context)
 
 
+@login_required
+def section_insights(request, slug, section_id):
+    """AJAX endpoint to trigger or poll GenAI performance insights."""
+    course, section, profile, can_manage = _section_access_context(request.user, slug, section_id)
+    if not can_manage:
+        return JsonResponse({"error": "Permission denied."}, status=403)
+
+    if request.method == "POST":
+        # Compute stats summary for the GenAI prompt
+        ctx = _section_dashboard_context(course, section, can_manage)
+
+        stats_summary = {
+            "student_count": ctx["student_count"],
+            "assignment_count": ctx["assignment_count"],
+            "class_average": ctx["class_average"],
+            "class_median": ctx["class_median"],
+            "class_highest": ctx["class_highest"],
+            "class_lowest": ctx["class_lowest"],
+            "submission_rate": ctx["submission_rate"],
+            "grading_completion": ctx["grading_completion"],
+            "performance_tiers": json.loads(ctx["performance_tiers_json"]),
+            "score_distribution": json.loads(ctx["score_distribution_json"]),
+            "activity_data": list(zip(
+                json.loads(ctx["activity_labels_json"]),
+                json.loads(ctx["activity_averages_json"]),
+            )),
+            "struggling_questions": ctx["struggling_questions"],
+        }
+
+        ai_request = AiToolRequest.objects.create(
+            user=request.user,
+            tool_type=AiToolRequest.ToolType.RISK_INSIGHTS,
+            prompt=f"Performance insights for {course.code} - {section.name}",
+            status=AiToolRequest.Status.QUEUED,
+            metadata={
+                "course_id": course.id,
+                "section_id": section.id,
+                "section_name": section.name,
+            },
+        )
+
+        from .tasks import generate_performance_insights_task
+        generate_performance_insights_task.delay(
+            ai_request.id,
+            course.id,
+            section.id,
+            stats_summary,
+        )
+
+        return JsonResponse({"request_id": ai_request.id, "status": "queued"})
+
+    # GET — poll for result
+    request_id = request.GET.get("request_id")
+    if not request_id:
+        # Find the latest completed insights request for this section
+        latest = AiToolRequest.objects.filter(
+            user=request.user,
+            tool_type=AiToolRequest.ToolType.RISK_INSIGHTS,
+            metadata__section_id=section.id,
+        ).order_by("-created_at").first()
+        if latest:
+            return JsonResponse({
+                "request_id": latest.id,
+                "status": latest.status,
+                "result": latest.result if latest.status == AiToolRequest.Status.COMPLETED else "",
+                "error": latest.error_message if latest.status == AiToolRequest.Status.FAILED else "",
+            })
+        return JsonResponse({"status": "none", "result": ""})
+
+    try:
+        ai_request = AiToolRequest.objects.get(id=request_id)
+    except AiToolRequest.DoesNotExist:
+        return JsonResponse({"error": "Request not found."}, status=404)
+
+    return JsonResponse({
+        "request_id": ai_request.id,
+        "status": ai_request.status,
+        "result": ai_request.result if ai_request.status == AiToolRequest.Status.COMPLETED else "",
+        "error": ai_request.error_message if ai_request.status == AiToolRequest.Status.FAILED else "",
+    })
+
 def _section_access_context(user, slug, section_id):
     course = _get_course_or_404(
         slug,
@@ -701,27 +782,140 @@ def _section_dashboard_context(course, section, can_manage):
         due_at__lte=timezone.now() + timedelta(days=7),
     ).count()
     
+    # ── Performance analytics ───────────────────────────────────────────
+    from decimal import Decimal, InvalidOperation
+    import statistics as _stats
+
     at_risk_count = 0
+    student_scores = {}  # {student_id: {'earned': Decimal, 'total': Decimal}}
+    student_percentages = []
+    score_distribution = [0] * 10  # 10 buckets: 0-10, 10-20, ..., 90-100
+    performance_tiers = {"excellent": 0, "good": 0, "needs_improvement": 0, "at_risk": 0}
+
+    # Per-activity averages
+    activity_labels_json = []
+    activity_averages_json = []
+
+    # Struggling questions
+    struggling_questions = []
+
     if can_manage and student_ids:
-        graded_submissions = Submission.objects.filter(
+        graded_submissions = list(Submission.objects.filter(
+            Q(assignment__course_section=section) | Q(assignment__course_section__isnull=True),
             assignment__course=course,
             student_id__in=student_ids,
-            score__isnull=False
-        ).select_related('assignment')
-        
-        student_scores = {}
+            score__isnull=False,
+        ).select_related('assignment'))
+
         for sub in graded_submissions:
             max_score = sub.assignment.max_score or 0
             if max_score > 0:
                 if sub.student_id not in student_scores:
-                    student_scores[sub.student_id] = {'earned': 0, 'total': 0}
+                    student_scores[sub.student_id] = {'earned': Decimal('0'), 'total': Decimal('0')}
                 student_scores[sub.student_id]['earned'] += sub.score
                 student_scores[sub.student_id]['total'] += max_score
-                
-        for sid, scores in student_scores.items():
-            if scores['total'] > 0 and (scores['earned'] / scores['total']) < 0.70:
-                at_risk_count += 1
 
+        for sid, scores in student_scores.items():
+            if scores['total'] > 0:
+                pct = float(scores['earned']) / float(scores['total']) * 100
+                student_percentages.append(pct)
+                bucket = min(int(pct // 10), 9)
+                score_distribution[bucket] += 1
+                if pct >= 90:
+                    performance_tiers["excellent"] += 1
+                elif pct >= 75:
+                    performance_tiers["good"] += 1
+                elif pct >= 60:
+                    performance_tiers["needs_improvement"] += 1
+                else:
+                    performance_tiers["at_risk"] += 1
+                    at_risk_count += 1
+
+        # Per-activity averages
+        for assignment in assignments:
+            section_subs = [
+                s for s in graded_submissions
+                if s.assignment_id == assignment.id
+            ]
+            if section_subs and assignment.max_score and assignment.max_score > 0:
+                avg_pct = sum(float(s.score) / float(assignment.max_score) * 100 for s in section_subs) / len(section_subs)
+                activity_labels_json.append(assignment.title[:40])
+                activity_averages_json.append(round(avg_pct, 1))
+
+        # Struggling questions — across all quiz assignments for this section
+        quiz_assignments = [a for a in assignments if a.activity_type == Assignment.ActivityType.QUIZ]
+        all_questions = list(Question.objects.filter(assignment__in=quiz_assignments).order_by('assignment_id', 'order'))
+
+        # Build a lookup: {question_id: {'correct': 0, 'total': 0}}
+        question_stats = {}
+        for q in all_questions:
+            question_stats[q.id] = {'question': q, 'correct': 0, 'total': 0}
+
+        # Parse each student's submission answers to check correctness per question
+        all_section_submissions = list(Submission.objects.filter(
+            assignment__in=quiz_assignments,
+            student_id__in=student_ids,
+        ).select_related('assignment'))
+
+        for sub in all_section_submissions:
+            try:
+                sub_data = json.loads(sub.content)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            answers_dict = sub_data.get("answers", {})
+            for q in all_questions:
+                if q.assignment_id != sub.assignment_id:
+                    continue
+                ans = answers_dict.get(str(q.id), "")
+                if not ans:
+                    continue
+                question_stats[q.id]['total'] += 1
+                is_correct = False
+                if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+                    correct_ids = q.correct_answers or ([q.correct_answer] if q.correct_answer else [])
+                    is_correct = (ans in correct_ids)
+                elif q.question_type == Question.QuestionType.TRUE_FALSE:
+                    correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "True")
+                    is_correct = (ans.lower() == correct_ans.lower())
+                elif q.question_type == Question.QuestionType.NUMBER:
+                    correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                    if correct_ans:
+                        try:
+                            accepted_range = q.answer_settings.get("accepted_range")
+                            if accepted_range:
+                                is_correct = Decimal(str(accepted_range["min"])) <= Decimal(ans) <= Decimal(str(accepted_range["max"]))
+                            else:
+                                is_correct = (Decimal(ans) == Decimal(correct_ans))
+                        except (InvalidOperation, ValueError, TypeError):
+                            is_correct = (ans == correct_ans)
+                if is_correct:
+                    question_stats[q.id]['correct'] += 1
+
+        # Sort questions by lowest correct rate, take top 5
+        for qid, stat in question_stats.items():
+            if stat['total'] > 0:
+                correct_rate = round(stat['correct'] / stat['total'] * 100, 1)
+                struggling_questions.append({
+                    'question_text': stat['question'].text[:120],
+                    'activity_title': stat['question'].assignment.title[:40],
+                    'correct_rate': correct_rate,
+                    'total_attempts': stat['total'],
+                })
+        struggling_questions.sort(key=lambda x: x['correct_rate'])
+        struggling_questions = struggling_questions[:5]
+
+    # Summary stats
+    class_average = round(_stats.mean(student_percentages), 1) if student_percentages else 0
+    class_median = round(_stats.median(student_percentages), 1) if student_percentages else 0
+    class_highest = round(max(student_percentages), 1) if student_percentages else 0
+    class_lowest = round(min(student_percentages), 1) if student_percentages else 0
+
+    expected_submissions = student_count * assignment_count
+    submission_rate = round(total_submission_count / expected_submissions * 100, 1) if expected_submissions > 0 else 0
+    graded_count = total_submission_count - pending_submission_count
+    grading_completion = round(graded_count / total_submission_count * 100, 1) if total_submission_count > 0 else 0
+
+    # ── Alerts ──────────────────────────────────────────────────────────
     section_alerts = []
     if student_count == 0:
         section_alerts.append({
@@ -774,6 +968,23 @@ def _section_dashboard_context(course, section, can_manage):
         "due_soon_count": due_soon_count,
         "at_risk_count": at_risk_count,
         "section_alerts": section_alerts,
+        # Performance Insights data
+        "class_average": class_average,
+        "class_median": class_median,
+        "class_highest": class_highest,
+        "class_lowest": class_lowest,
+        "submission_rate": submission_rate,
+        "grading_completion": grading_completion,
+        "score_distribution_json": json.dumps(score_distribution),
+        "activity_labels_json": json.dumps(activity_labels_json),
+        "activity_averages_json": json.dumps(activity_averages_json),
+        "performance_tiers_json": json.dumps([
+            performance_tiers["excellent"],
+            performance_tiers["good"],
+            performance_tiers["needs_improvement"],
+            performance_tiers["at_risk"],
+        ]),
+        "struggling_questions": struggling_questions,
     }
 
 

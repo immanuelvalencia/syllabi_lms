@@ -175,3 +175,74 @@ In your analysis, include:
         return response.text
     except Exception as e:
         return f"Error generating submission analysis: {str(e)}"
+
+
+def generate_performance_insights(course, section, stats_summary):
+    """
+    Generate a GenAI-powered narrative performance insights report
+    for a course section, based on pre-computed analytics data.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return "Error: GEMINI_API_KEY environment variable is not configured."
+
+    client = genai.Client(api_key=api_key)
+
+    system_prompt = (
+        "You are an expert academic analytics advisor for university instructors. "
+        "Your task is to analyze class performance data and produce a clear, actionable insights report. "
+        "IMPORTANT: You must return the output STRICTLY in Markdown format with clear headings and bullet points. "
+        "Do NOT wrap the output in markdown code blocks. "
+        "CRITICAL: Do NOT use any emojis, emoji symbols, unicode icons, or decorative characters anywhere in your report. "
+        "Use only plain text with standard markdown formatting."
+    )
+
+    prompt = f"""
+Course: {course.title} ({course.code})
+Section: {section.name}
+Schedule: {section.schedule_title or 'Not set'} | {section.meeting_days or 'Not set'}
+
+CLASS PERFORMANCE DATA:
+- Total Students: {stats_summary['student_count']}
+- Total Activities: {stats_summary['assignment_count']}
+- Class Average: {stats_summary['class_average']}%
+- Class Median: {stats_summary['class_median']}%
+- Highest Score: {stats_summary['class_highest']}%
+- Lowest Score: {stats_summary['class_lowest']}%
+- Submission Rate: {stats_summary['submission_rate']}%
+- Grading Completion: {stats_summary['grading_completion']}%
+
+PERFORMANCE TIERS:
+- Excellent (>=90%): {stats_summary['performance_tiers'][0]} students
+- Good (>=75%): {stats_summary['performance_tiers'][1]} students
+- Needs Improvement (>=60%): {stats_summary['performance_tiers'][2]} students
+- At Risk (<60%): {stats_summary['performance_tiers'][3]} students
+
+SCORE DISTRIBUTION (0-10%, 10-20%, ... 90-100%):
+{stats_summary['score_distribution']}
+
+PER-ACTIVITY CLASS AVERAGES:
+{stats_summary['activity_data']}
+
+TOP STRUGGLING QUESTIONS (lowest correct rates):
+{stats_summary['struggling_questions']}
+
+Please produce a detailed performance insights report that includes:
+1. Executive Summary - overall class health in 2-3 sentences.
+2. Key Findings - notable patterns, strengths, and concerns with specific data references.
+3. At-Risk Student Analysis - discuss the proportion and severity of struggling students.
+4. Question-Level Insights - analyze which topics/concepts students find most difficult based on the struggling questions.
+5. Actionable Recommendations - specific, practical steps the instructor can take to improve outcomes (e.g., review sessions, targeted practice, re-teaching specific topics).
+6. Submission & Grading Notes - observations about submission rates and grading completion.
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=system_prompt),
+        )
+        return response.text
+    except Exception as e:
+        return f"Error generating performance insights: {str(e)}"
+

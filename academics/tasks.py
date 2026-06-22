@@ -479,3 +479,39 @@ def generate_submission_analysis_task(submission_id, answers_breakdown, student_
         except Exception:
             pass
         raise e
+
+
+@shared_task
+def generate_performance_insights_task(ai_request_id, course_id, section_id, stats_summary):
+    from academics.models import AiToolRequest, Course, CourseSection
+    from academics.services import generate_performance_insights
+    from django.utils import timezone
+
+    try:
+        ai_request = AiToolRequest.objects.get(id=ai_request_id)
+        ai_request.status = AiToolRequest.Status.RUNNING
+        ai_request.started_at = timezone.now()
+        ai_request.save(update_fields=["status", "started_at"])
+
+        course = Course.objects.get(id=course_id)
+        section = CourseSection.objects.get(id=section_id)
+
+        result = generate_performance_insights(course, section, stats_summary)
+
+        ai_request.status = AiToolRequest.Status.COMPLETED
+        ai_request.result = result
+        ai_request.completed_at = timezone.now()
+        ai_request.save(update_fields=["status", "result", "completed_at"])
+        return result
+
+    except Exception as e:
+        try:
+            ai_request = AiToolRequest.objects.get(id=ai_request_id)
+            ai_request.status = AiToolRequest.Status.FAILED
+            ai_request.error_message = str(e)
+            ai_request.completed_at = timezone.now()
+            ai_request.save(update_fields=["status", "error_message", "completed_at"])
+        except Exception:
+            pass
+        raise e
+

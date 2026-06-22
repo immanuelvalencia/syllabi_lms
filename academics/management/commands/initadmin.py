@@ -9,7 +9,7 @@ class Command(BaseCommand):
         User = get_user_model()
         username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
         email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
-        password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin123')
+        password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin1234')
 
         if not User.objects.filter(username=username).exists():
             self.stdout.write(f'Creating superuser: {username}')
