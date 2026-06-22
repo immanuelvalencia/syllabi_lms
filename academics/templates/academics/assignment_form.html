@@ -4,7 +4,7 @@
 
 {% block page_header %}
 <div class="mb-4">
-    <a href="{% url 'academics:course_activities' course.slug %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+    <a href="{% url 'academics:course_activities' course.public_id %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
         <i class="bi bi-arrow-left"></i> Back to section
     </a>
 </div>
@@ -15,12 +15,26 @@
 {% endblock %}
 
 {% block content %}
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['\\(', '\\)']],
+            displayMath: [['\\[', '\\]']],
+            processEscapes: true
+        },
+        svg: { fontCache: 'global' }
+    };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<script defer src="https://unpkg.com/mathlive"></script>
+{{ questions_data|json_script:"questions-data" }}
+
 <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
-    <div class="p-6 sm:p-8" x-data="activityForm()">
+    <div class="p-6 sm:p-8 relative" x-data="activityForm()" x-init="init()" @keydown.window="handleImageKeydown($event)">
         <form method="post" class="space-y-8" @submit="submitForm">
             {% csrf_token %}
             <input type="hidden" name="questions_json" x-model="questionsJsonPayload">
-            
+
             {% if assignment_form.non_field_errors %}
                 <div class="rounded-md border border-red-200 bg-red-50 p-4">
                     <div class="text-sm text-red-700">{{ assignment_form.non_field_errors }}</div>
@@ -71,27 +85,24 @@
                 </div>
             </div>
 
-            <!-- Alpine.js dynamic questions section -->
-            <div class="pt-6 border-t border-gray-100">
-                <div class="flex items-center justify-between mb-4">
+            <div class="border-t border-gray-100 pt-6">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h3 class="text-base font-semibold leading-7 text-gray-900">Questions</h3>
-                    <p class="text-sm font-medium text-gray-500">Total Points: <span class="text-gray-900 font-bold" x-text="totalPoints"></span></p>
+                    <p class="text-sm font-medium text-gray-500">Total Points: <span class="font-bold text-gray-900" x-text="totalPoints"></span></p>
                 </div>
 
-                <div class="space-y-6">
-                    <template x-for="(question, index) in questions" :key="index">
-                        <div class="p-5 border border-gray-200 rounded-lg bg-gray-50/50">
-                            <div class="flex justify-between items-start mb-4">
+                <div class="mt-4 space-y-5">
+                    <template x-for="(question, index) in questions" :key="question.uid">
+                        <div class="rounded-lg border border-gray-200 bg-gray-50/50 p-4 sm:p-5">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <h4 class="font-medium text-gray-900">Question <span x-text="index + 1"></span></h4>
-                                <button type="button" @click="removeQuestion(index)" class="text-red-500 hover:text-red-700 text-sm font-medium"><i class="bi bi-trash"></i> Remove</button>
+                                <button type="button" @click="removeQuestion(index)" class="inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700">
+                                    <i class="bi bi-trash"></i> Remove
+                                </button>
                             </div>
-                            
-                            <div class="grid gap-4 sm:grid-cols-12 mb-4">
-                                <div class="sm:col-span-8">
-                                    <label class="block text-sm font-medium leading-6 text-gray-900">Question Text</label>
-                                    <textarea x-model="question.text" rows="2" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6"></textarea>
-                                </div>
-                                <div class="sm:col-span-2">
+
+                            <div class="mt-4 grid gap-4 sm:grid-cols-2 mb-4">
+                                <div>
                                     <label class="block text-sm font-medium leading-6 text-gray-900">Type</label>
                                     <select x-model="question.type" @change="handleTypeChange(question)" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
                                         <option value="multiple_choice">Multiple Choice</option>
@@ -100,44 +111,107 @@
                                         <option value="number">Number Field</option>
                                     </select>
                                 </div>
-                                <div class="sm:col-span-2">
+                                <div>
                                     <label class="block text-sm font-medium leading-6 text-gray-900">Points</label>
-                                    <input type="number" x-model.number="question.points" min="0" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                    <input type="number" x-model="question.points" min="0" step="0.01" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
                                 </div>
                             </div>
 
-                            <!-- Multiple Choice Options -->
-                            <div x-show="question.type === 'multiple_choice'" class="mt-4 ml-4 pl-4 border-l-2 border-gray-200">
-                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Choices</label>
-                                <template x-for="(choice, cIndex) in question.choices" :key="cIndex">
-                                    <div class="flex items-center gap-2 mb-2">
-                                        <input type="radio" :name="'correct_' + index" :value="choice" x-model="question.correct_answer" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
-                                        <input type="text" x-model="question.choices[cIndex]" @input="updateCorrectAnswerIfSelected(question, choice, $event.target.value, cIndex)" class="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
-                                        <button type="button" @click="removeChoice(question, cIndex)" class="text-red-500 hover:text-red-700 p-2"><i class="bi bi-x-circle"></i></button>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium leading-6 text-gray-900">Question Text</label>
+                                <div class="mt-1 overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm focus-within:border-gray-900 focus-within:ring-1 focus-within:ring-gray-900">
+                                    <div class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-2 py-2">
+                                        <button type="button" title="Bold" @click="formatEditor(index, 'bold')" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900">
+                                            <i class="bi bi-type-bold"></i>
+                                        </button>
+                                        <button type="button" title="Italic" @click="formatEditor(index, 'italic')" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900">
+                                            <i class="bi bi-type-italic"></i>
+                                        </button>
+                                        <button type="button" title="Upload photo" @click="document.getElementById('question-image-' + question.uid).click()" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900">
+                                            <i class="bi bi-image"></i>
+                                        </button>
+                                        <span class="mx-1 h-6 w-px bg-gray-200"></span>
+                                        <button type="button" title="Align image left" :disabled="!isImageSelectedInQuestion(question)" @click="alignSelectedImage(question, 'left')" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">
+                                            <i class="bi bi-text-left"></i>
+                                        </button>
+                                        <button type="button" title="Align image center" :disabled="!isImageSelectedInQuestion(question)" @click="alignSelectedImage(question, 'center')" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">
+                                            <i class="bi bi-text-center"></i>
+                                        </button>
+                                        <button type="button" title="Align image right" :disabled="!isImageSelectedInQuestion(question)" @click="alignSelectedImage(question, 'right')" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40">
+                                            <i class="bi bi-text-right"></i>
+                                        </button>
+                                        <span class="mx-1 h-6 w-px bg-gray-200"></span>
+                                        <button type="button" title="Add equation" @click="openEquation(index)" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-600 hover:bg-white hover:text-gray-900">
+                                            <i class="bi bi-calculator"></i>
+                                        </button>
+                                        <input type="file" accept="image/*" class="hidden" :id="'question-image-' + question.uid" @change="insertImage(question, index, $event)">
                                     </div>
-                                </template>
-                                <button type="button" @click="addChoice(question)" class="mt-2 text-sm text-green-600 font-medium hover:text-green-700"><i class="bi bi-plus-circle"></i> Add Choice</button>
+                                    <div
+                                        class="min-h-40 w-full overflow-x-auto overflow-y-visible px-3 py-2 text-sm leading-6 text-gray-900 outline-none [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:cursor-pointer [&_.math-expression]:cursor-pointer [&_.math-block]:cursor-pointer"
+                                        contenteditable="true"
+                                        :id="'question-editor-' + question.uid"
+                                        x-init="$el.innerHTML = editorHtml(question)"
+                                        @input="syncEditor(question, $event.currentTarget)"
+                                        @click="handleEditorClick(question, $event)"
+                                    ></div>
+                                </div>
                             </div>
 
-                            <!-- True/False Answer -->
-                            <div x-show="question.type === 'true_false'" class="mt-4">
-                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Correct Answer</label>
-                                <div class="flex items-center gap-4">
-                                    <label class="flex items-center gap-2">
-                                        <input type="radio" x-model="question.correct_answer" value="True" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
-                                        <span class="text-sm">True</span>
+                            <div x-show="question.type === 'multiple_choice'" class="mt-5 rounded-md border border-gray-200 bg-white p-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-8 text-center text-xs font-medium text-gray-500" title="Correct Answer">Correct</span>
+                                    <label class="block text-sm font-medium leading-6 text-gray-900">Choices</label>
+                                </div>
+                                <div class="mt-2 space-y-2">
+                                    <template x-for="(choice, cIndex) in question.choices" :key="choice.id">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <div class="flex h-6 w-6 shrink-0 items-center justify-center">
+                                                <input type="checkbox" :value="choice.id" x-model="question.correct_answers" class="h-5 w-5 cursor-pointer rounded border-gray-300 text-green-600 focus:ring-green-600" title="Mark as correct answer">
+                                            </div>
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-sm font-semibold text-gray-700" x-text="choiceLetter(cIndex)"></span>
+                                            <input type="text" x-model="choice.text" class="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                            <button type="button" title="Remove choice" @click="removeChoice(question, cIndex)" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-red-500 hover:bg-red-50 hover:text-red-700">
+                                                <i class="bi bi-x-circle text-lg"></i>
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+                                <button type="button" @click="addChoice(question)" class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-green-700 hover:text-green-800">
+                                    <i class="bi bi-plus-circle"></i> Add Choice
+                                </button>
+                            </div>
+
+                            <div x-show="question.type === 'true_false'" class="mt-5 rounded-md border border-gray-200 bg-white p-4">
+                                <label class="block text-sm font-medium leading-6 text-gray-900">Correct Answer</label>
+                                <div class="mt-2 flex items-center gap-4">
+                                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                                        <input type="radio" x-model="question.correct_answers[0]" value="True" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                        True
                                     </label>
-                                    <label class="flex items-center gap-2">
-                                        <input type="radio" x-model="question.correct_answer" value="False" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
-                                        <span class="text-sm">False</span>
+                                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                                        <input type="radio" x-model="question.correct_answers[0]" value="False" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                        False
                                     </label>
                                 </div>
                             </div>
 
-                            <!-- Text/Number Answer -->
-                            <div x-show="question.type === 'text' || question.type === 'number'" class="mt-4">
-                                <label class="block text-sm font-medium leading-6 text-gray-900 mb-2">Correct Answer (Optional)</label>
-                                <input :type="question.type === 'number' ? 'number' : 'text'" x-model="question.correct_answer" class="block w-full sm:w-1/2 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                            <div x-show="question.type === 'text'" class="mt-5 rounded-md border border-gray-200 bg-white p-4">
+                                <label class="block text-sm font-medium leading-6 text-gray-900">Correct Answer</label>
+                                <input type="text" x-model="question.correct_answers[0]" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                            </div>
+
+                            <div x-show="question.type === 'number'" class="mt-5 rounded-md border border-gray-200 bg-white p-4">
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label class="block text-sm font-medium leading-6 text-gray-900">Correct Answer</label>
+                                        <input type="number" step="any" x-model="question.correct_answers[0]" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium leading-6 text-gray-900">Tolerance (%)</label>
+                                        <input type="number" min="0" step="0.01" x-model="question.tolerance_percent" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-900 sm:text-sm sm:leading-6">
+                                    </div>
+                                </div>
+                                <p class="mt-3 text-sm font-medium text-gray-600">Accepted answer: <span class="text-gray-900" x-text="acceptedRangeText(question)"></span></p>
                             </div>
                         </div>
                     </template>
@@ -148,77 +222,733 @@
                 </button>
             </div>
 
+            <div x-show="equationModal.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4">
+                <div class="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+                    <div class="border-b border-gray-100 px-5 py-4">
+                        <h3 class="text-base font-semibold text-gray-900">Add Equation</h3>
+                    </div>
+                    <div class="space-y-4 px-5 py-4">
+                        <div>
+                            <label class="block text-sm font-medium leading-6 text-gray-900">Equation</label>
+                            <math-field
+                                id="math-live-editor"
+                                class="mt-1 block min-h-14 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus-within:border-gray-900 focus-within:ring-1 focus-within:ring-gray-900"
+                                virtual-keyboard-mode="manual"
+                                @input="equationModal.latex = $event.target.value; renderEquationPreview()"
+                            ></math-field>
+                        </div>
+                        <div>
+                            <div class="grid max-h-56 grid-cols-3 gap-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 sm:grid-cols-5">
+                                <template x-for="tool in equationTools" :key="tool.label">
+                                    <button type="button" :title="tool.title" @click="insertEquationSnippet(tool.snippet)" class="inline-flex h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50" x-text="tool.label"></button>
+                                </template>
+                            </div>
+                            <button type="button" title="Clear equation" @click="clearEquation" class="mt-2 inline-flex h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">Clear</button>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+                                <input type="radio" x-model="equationModal.display" value="inline" @change="renderEquationPreview" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                Inline
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+                                <input type="radio" x-model="equationModal.display" value="block" @change="renderEquationPreview" class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                Block
+                            </label>
+                        </div>
+                        <div class="min-h-16 rounded-md border border-gray-200 bg-gray-50 p-4 text-gray-900" x-ref="equationPreview" x-text="equationPreviewText()"></div>
+                    </div>
+                    <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-4">
+                        <button type="button" @click="equationModal.open = false" class="text-sm font-semibold text-gray-700 hover:text-gray-900">Cancel</button>
+                        <button type="button" @click="insertEquation" :disabled="!equationModal.latex.trim()" class="inline-flex h-10 items-center justify-center rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50">Insert Equation</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="flex items-center justify-end gap-x-4 border-t border-gray-100 pt-5">
-                <a href="{% if assignment %}{% url 'academics:assignment_detail' course.slug assignment.id %}{% else %}{% url 'academics:course_activities' course.slug %}{% endif %}" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</a>
+                <a href="{% if assignment %}{% url 'academics:assignment_detail' course.public_id assignment.public_id %}{% else %}{% url 'academics:course_activities' course.public_id %}{% endif %}" class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600">Cancel</a>
                 <button type="submit" class="inline-flex h-10 items-center justify-center rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">{% if assignment %}Save Changes{% else %}Create Activity{% endif %}</button>
             </div>
         </form>
+
     </div>
 </section>
 
 <script>
     document.addEventListener('alpine:init', () => {
         Alpine.data('activityForm', () => ({
-            questions: {{ questions_json|safe|default:"[]" }},
+            questions: [],
             questionsJsonPayload: '',
+            equationModal: { open: false, questionIndex: null, latex: '', display: 'block' },
+            equationTools: [
+                { label: 'fraction', title: 'Fraction', snippet: '\\frac{}{}' },
+                { label: 'ratio', title: 'Ratio', snippet: '{}:{}' },
+                { label: 'power', title: 'Exponent', snippet: '^{}' },
+                { label: 'sub', title: 'Subscript', snippet: '_{}' },
+                { label: 'sqrt', title: 'Square root', snippet: '\\sqrt{}' },
+                { label: 'nth root', title: 'Nth root', snippet: '\\sqrt[]{}' },
+                { label: '()', title: 'Parentheses', snippet: '\\left(\\right)' },
+                { label: 'abs', title: 'Absolute value', snippet: '\\left|\\right|' },
+                { label: 'sin', title: 'Sine', snippet: '\\sin{}' },
+                { label: 'cos', title: 'Cosine', snippet: '\\cos{}' },
+                { label: 'tan', title: 'Tangent', snippet: '\\tan{}' },
+                { label: 'log', title: 'Logarithm', snippet: '\\log{}' },
+                { label: 'ln', title: 'Natural log', snippet: '\\ln{}' },
+                { label: 'lim', title: 'Limit', snippet: '\\lim_{}' },
+                { label: 'sum', title: 'Sum', snippet: '\\sum_{}^{}' },
+                { label: 'int', title: 'Integral', snippet: '\\int_{}^{}' },
+                { label: '+/-', title: 'Plus or minus', snippet: '\\pm' },
+                { label: 'times', title: 'Multiplication', snippet: '\\times' },
+                { label: 'divide', title: 'Division', snippet: '\\div' },
+                { label: '<=', title: 'Less than or equal', snippet: '\\le' },
+                { label: '>=', title: 'Greater than or equal', snippet: '\\ge' },
+                { label: '!=', title: 'Not equal', snippet: '\\ne' },
+                { label: 'approx', title: 'Approximately equal', snippet: '\\approx' },
+                { label: 'pi', title: 'Pi', snippet: '\\pi' },
+                { label: 'theta', title: 'Theta', snippet: '\\theta' },
+                { label: 'alpha', title: 'Alpha', snippet: '\\alpha' },
+                { label: 'beta', title: 'Beta', snippet: '\\beta' },
+                { label: 'Delta', title: 'Delta', snippet: '\\Delta' }
+            ],
+            selectedImage: null,
+            imageResize: null,
+
+            init() {
+                this.rootEl = this.$el || document.querySelector('[x-data="activityForm()"]');
+                const dataEl = document.getElementById('questions-data');
+                const rawQuestions = dataEl ? JSON.parse(dataEl.textContent || '[]') : [];
+                this.questions = rawQuestions.map((question) => this.normalizeQuestion(question));
+                this.questionsJsonPayload = JSON.stringify(this.serializeQuestions());
+                this.boundImageResizeMove = this.handleImageResizeMove.bind(this);
+                this.boundImageResizeEnd = this.stopImageResize.bind(this);
+                window.addEventListener('mousemove', this.boundImageResizeMove);
+                window.addEventListener('mouseup', this.boundImageResizeEnd);
+                this.$nextTick(() => this.typesetMath(document));
+            },
 
             get totalPoints() {
-                return this.questions.reduce((sum, q) => sum + (parseInt(q.points) || 0), 0);
+                const total = this.questions.reduce((sum, question) => sum + (parseFloat(question.points) || 0), 0);
+                return this.formatNumber(total);
+            },
+
+            normalizeQuestion(question) {
+                const uid = question.uid || this.newUid('question');
+                const choices = this.normalizeChoices(question.choices || []);
+                const correctAnswers = Array.isArray(question.correct_answers) ? question.correct_answers : (question.correct_answer ? [question.correct_answer] : []);
+                const content = question.content || { html: question.text || '', plain_text: '' };
+                const settings = question.answer_settings || {};
+                return {
+                    uid,
+                    text: question.text || '',
+                    content: {
+                        html: content.html || question.text || '',
+                        plain_text: content.plain_text || ''
+                    },
+                    type: question.type || 'multiple_choice',
+                    points: question.points || 1,
+                    choices: choices.length ? choices : this.defaultChoices(),
+                    correct_answers: correctAnswers,
+                    tolerance_percent: settings.tolerance_percent || 0
+                };
+            },
+
+            normalizeChoices(choices) {
+                return choices.map((choice, index) => {
+                    if (typeof choice === 'string') {
+                        return { id: this.newUid('choice'), label: this.choiceLetter(index), text: choice };
+                    }
+                    return {
+                        id: choice.id || this.newUid('choice'),
+                        label: choice.label || this.choiceLetter(index),
+                        text: choice.text || ''
+                    };
+                });
+            },
+
+            defaultChoices() {
+                return ['Choice A', 'Choice B', 'Choice C', 'Choice D'].map((text, index) => ({
+                    id: this.newUid('choice'),
+                    label: this.choiceLetter(index),
+                    text
+                }));
             },
 
             addQuestion() {
+                const choices = this.defaultChoices();
                 this.questions.push({
+                    uid: this.newUid('question'),
                     text: '',
+                    content: { html: '', plain_text: '' },
                     type: 'multiple_choice',
                     points: 1,
-                    choices: ['A', 'B', 'C'],
-                    correct_answer: 'A'
+                    choices,
+                    correct_answers: [],
+                    tolerance_percent: 0
                 });
             },
 
             removeQuestion(index) {
+                if (this.selectedImage && this.selectedImage.questionUid === this.questions[index]?.uid) {
+                    this.clearSelectedImage();
+                }
                 this.questions.splice(index, 1);
             },
 
             addChoice(question) {
-                question.choices.push(`Choice ${question.choices.length + 1}`);
+                question.choices.push({
+                    id: this.newUid('choice'),
+                    label: this.choiceLetter(question.choices.length),
+                    text: `Choice ${this.choiceLetter(question.choices.length)}`
+                });
             },
 
             removeChoice(question, index) {
-                if (question.correct_answer === question.choices[index]) {
-                    question.correct_answer = '';
-                }
-                question.choices.splice(index, 1);
-            },
-
-            updateCorrectAnswerIfSelected(question, oldChoice, newChoice, index) {
-                if (question.correct_answer === oldChoice) {
-                    question.correct_answer = newChoice;
-                }
-                question.choices[index] = newChoice;
+                const [removed] = question.choices.splice(index, 1);
+                question.correct_answers = question.correct_answers.filter((answer) => answer !== removed.id);
             },
 
             handleTypeChange(question) {
                 if (question.type === 'multiple_choice') {
-                    if (!question.choices || question.choices.length === 0) {
-                        question.choices = ['A', 'B', 'C'];
+                    if (!question.choices.length) {
+                        question.choices = this.defaultChoices();
                     }
-                    if (!question.choices.includes(question.correct_answer)) {
-                        question.correct_answer = question.choices[0];
-                    }
-                } else if (question.type === 'true_false') {
-                    if (question.correct_answer !== 'True' && question.correct_answer !== 'False') {
-                        question.correct_answer = 'True';
-                    }
-                } else {
-                    question.correct_answer = '';
+                    question.correct_answers = question.correct_answers.filter((answer) => question.choices.some((choice) => choice.id === answer));
+                    return;
+                }
+                if (question.type === 'true_false') {
+                    question.correct_answers = [question.correct_answers[0] === 'False' ? 'False' : 'True'];
+                    return;
+                }
+                if (!question.correct_answers.length) {
+                    question.correct_answers = [''];
                 }
             },
 
+            editorHtml(question) {
+                return question.content.html || this.escapeHtml(question.text || '');
+            },
+
+            getCleanHtml(editor) {
+                const clone = editor.cloneNode(true);
+                const mathNodes = clone.querySelectorAll('.math-expression, .math-block');
+                mathNodes.forEach(node => {
+                    const latex = node.dataset.latex || '';
+                    const isBlock = node.dataset.display === 'block';
+                    node.innerHTML = '';
+                    node.textContent = isBlock ? `\\[${latex}\\]` : `\\(${latex}\\)`;
+                });
+                clone.querySelectorAll('.question-image-frame').forEach((frame) => {
+                    const image = frame.querySelector('img');
+                    if (!image) {
+                        frame.remove();
+                        return;
+                    }
+                    image.style.display = frame.style.display || image.style.display;
+                    image.style.margin = frame.style.margin || image.style.margin;
+                    image.style.verticalAlign = frame.style.verticalAlign || image.style.verticalAlign;
+                    image.removeAttribute('contenteditable');
+                    image.classList.remove('question-image-selected');
+                    frame.replaceWith(image);
+                });
+                clone.querySelectorAll('.question-image-handle').forEach((handle) => handle.remove());
+                clone.querySelectorAll('img').forEach((image) => {
+                    image.style.outline = '';
+                    image.style.cursor = '';
+                });
+                return clone.innerHTML;
+            },
+
+            syncEditor(question, editor) {
+                question.content.html = this.getCleanHtml(editor);
+                question.content.plain_text = editor.innerText.trim();
+                question.text = question.content.plain_text;
+            },
+
+            formatEditor(index, command) {
+                this.focusEditor(index);
+                document.execCommand(command, false, null);
+                const question = this.questions[index];
+                const editor = this.editorForQuestion(question);
+                if (editor) {
+                    this.syncEditor(question, editor);
+                }
+            },
+
+            focusEditor(index) {
+                const editor = this.editorForQuestion(this.questions[index]);
+                if (editor) {
+                    editor.focus();
+                }
+            },
+
+            editorForQuestion(question) {
+                return question ? document.getElementById('question-editor-' + question.uid) : null;
+            },
+
+            openEquation(index) {
+                this.equationModal = { open: true, questionIndex: index, latex: '', display: 'block' };
+                this.$nextTick(() => {
+                    const mf = document.getElementById('math-live-editor');
+                    if (mf) {
+                        mf.value = '';
+                        mf.focus();
+                    }
+                    this.renderEquationPreview();
+                });
+            },
+
+            syncEquationFromField() {
+                const mf = document.getElementById('math-live-editor');
+                if (mf) {
+                    this.equationModal.latex = mf.value || '';
+                }
+            },
+
+            insertEquationSnippet(snippet) {
+                const mf = document.getElementById('math-live-editor');
+                if (!mf) {
+                    return;
+                }
+                mf.focus();
+                if (typeof mf.executeCommand === 'function') {
+                    mf.executeCommand(['insert', snippet]);
+                } else {
+                    mf.value = `${mf.value || ''}${snippet}`;
+                }
+                this.syncEquationFromField();
+                this.renderEquationPreview();
+            },
+
+            clearEquation() {
+                const mf = document.getElementById('math-live-editor');
+                if (mf) {
+                    mf.value = '';
+                    mf.focus();
+                }
+                this.equationModal.latex = '';
+                this.renderEquationPreview();
+            },
+
+            equationPreviewText() {
+                const latex = this.equationModal.latex || '';
+                return this.equationModal.display === 'block' ? `\\[${latex}\\]` : `\\(${latex}\\)`;
+            },
+
+            renderEquationPreview() {
+                this.$nextTick(() => {
+                    if (this.$refs.equationPreview) {
+                        this.$refs.equationPreview.textContent = this.equationPreviewText();
+                        this.typesetMath(this.$refs.equationPreview);
+                    }
+                });
+            },
+
+            insertEquation() {
+                const question = this.questions[this.equationModal.questionIndex];
+                const editor = this.editorForQuestion(question);
+                this.syncEquationFromField();
+                const latex = (this.equationModal.latex || '').trim();
+                if (!question || !editor || !latex) {
+                    return;
+                }
+                const isBlock = this.equationModal.display === 'block';
+                const node = document.createElement(isBlock ? 'div' : 'span');
+                node.className = isBlock ? 'math-block' : 'math-expression';
+                node.dataset.display = isBlock ? 'block' : 'inline';
+                node.dataset.latex = latex;
+                node.textContent = isBlock ? `\\[${latex}\\]` : `\\(${latex}\\)`;
+                this.insertNodeIntoEditor(editor, node);
+                this.syncEditor(question, editor);
+                this.equationModal.open = false;
+                this.$nextTick(() => {
+                    if (typeof window.MathJax !== 'undefined' && window.MathJax.typesetPromise) {
+                        window.MathJax.typesetPromise([editor]).catch((err) => console.error(err));
+                    } else {
+                        this.typesetMath(editor);
+                    }
+                });
+            },
+
+            async insertImage(question, index, event) {
+                const file = event.target.files && event.target.files[0];
+                event.target.value = '';
+                if (!file) {
+                    return;
+                }
+                const editor = this.editorForQuestion(question);
+                const src = await this.imageFileToDataUrl(file);
+                const imageId = this.newUid('image');
+                const img = document.createElement('img');
+                img.alt = file.name || 'Question image';
+                img.className = 'question-image';
+                img.dataset.imageId = imageId;
+                img.draggable = false;
+                img.src = src;
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.display = 'block';
+                img.style.margin = '0.5rem 0';
+                this.insertNodeIntoEditor(editor, this.createImageFrame(img));
+                this.syncEditor(question, editor);
+                this.$nextTick(() => this.selectImage(question, img));
+            },
+
+            imageFileToDataUrl(file) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const image = new Image();
+                        image.onload = () => {
+                            const maxSide = 1400;
+                            const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.round(image.width * scale);
+                            canvas.height = Math.round(image.height * scale);
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                            resolve(canvas.toDataURL('image/jpeg', 0.88));
+                        };
+                        image.src = reader.result;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            },
+
+            insertNodeIntoEditor(editor, node) {
+                editor.focus();
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount) {
+                    const range = selection.getRangeAt(0);
+                    if (editor.contains(range.commonAncestorContainer)) {
+                        range.deleteContents();
+                        range.insertNode(node);
+                        range.setStartAfter(node);
+                        range.setEndAfter(node);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        return;
+                    }
+                }
+                editor.appendChild(node);
+            },
+
+            handleEditorClick(question, event) {
+                if (event.target && event.target.closest && event.target.closest('.question-image-handle')) {
+                    return;
+                }
+                const frame = event.target && event.target.closest ? event.target.closest('.question-image-frame') : null;
+                const target = frame ? frame.querySelector('img') : (event.target && event.target.closest ? event.target.closest('img') : null);
+                const editor = this.editorForQuestion(question);
+                if (target && editor && editor.contains(target)) {
+                    event.preventDefault();
+                    target.draggable = false;
+                    this.selectImage(question, target);
+                    return;
+                }
+                this.clearSelectedImage();
+            },
+
+            createImageFrame(image) {
+                const frame = document.createElement('span');
+                frame.className = 'question-image-frame';
+                frame.contentEditable = 'false';
+                frame.style.position = 'relative';
+                frame.style.width = 'fit-content';
+                frame.style.maxWidth = '100%';
+                frame.style.lineHeight = '0';
+                frame.style.display = image.style.display || 'block';
+                frame.style.margin = image.style.margin || '0.5rem 0';
+                frame.style.verticalAlign = image.style.verticalAlign || '';
+                image.style.display = 'block';
+                image.style.margin = '0';
+                image.style.maxWidth = '100%';
+                image.style.height = 'auto';
+                image.style.cursor = 'pointer';
+                frame.appendChild(image);
+                return frame;
+            },
+
+            ensureImageFrame(image) {
+                const currentFrame = image.closest('.question-image-frame');
+                if (currentFrame) {
+                    return currentFrame;
+                }
+                const parent = image.parentNode;
+                const nextSibling = image.nextSibling;
+                const display = image.style.display || 'block';
+                const margin = image.style.margin || '0.5rem 0';
+                const verticalAlign = image.style.verticalAlign || '';
+                const frame = this.createImageFrame(image);
+                frame.style.display = display;
+                frame.style.margin = margin;
+                frame.style.verticalAlign = verticalAlign;
+                if (parent) {
+                    parent.insertBefore(frame, nextSibling);
+                }
+                return frame;
+            },
+
+            addImageHandles(frame) {
+                const handles = {
+                    nw: ['-6px', '', '', '-6px', 'nwse-resize'],
+                    n: ['-6px', '', '', '50%', 'ns-resize'],
+                    ne: ['-6px', '-6px', '', '', 'nesw-resize'],
+                    e: ['50%', '-6px', '', '', 'ew-resize'],
+                    se: ['', '-6px', '-6px', '', 'nwse-resize'],
+                    s: ['', '', '-6px', '50%', 'ns-resize'],
+                    sw: ['', '', '-6px', '-6px', 'nesw-resize'],
+                    w: ['50%', '', '', '-6px', 'ew-resize']
+                };
+                Object.entries(handles).forEach(([handle, position]) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'question-image-handle';
+                    button.dataset.handle = handle;
+                    button.title = `Resize ${handle}`;
+                    button.style.position = 'absolute';
+                    button.style.top = position[0];
+                    button.style.right = position[1];
+                    button.style.bottom = position[2];
+                    button.style.left = position[3];
+                    button.style.width = '12px';
+                    button.style.height = '12px';
+                    button.style.padding = '0';
+                    button.style.border = '1px solid #16a34a';
+                    button.style.borderRadius = '2px';
+                    button.style.background = '#fff';
+                    button.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.18)';
+                    button.style.cursor = position[4];
+                    button.style.zIndex = '2';
+                    button.style.pointerEvents = 'auto';
+                    if (['n', 's'].includes(handle)) {
+                        button.style.transform = 'translateX(-50%)';
+                    } else if (['e', 'w'].includes(handle)) {
+                        button.style.transform = 'translateY(-50%)';
+                    }
+                    button.addEventListener('mousedown', (resizeEvent) => this.startImageResize(resizeEvent, handle));
+                    frame.appendChild(button);
+                });
+            },
+
+            selectImage(question, image) {
+                if (!question || !image) {
+                    return;
+                }
+                this.clearSelectedImage();
+                const frame = this.ensureImageFrame(image);
+                frame.style.outline = '2px solid #16a34a';
+                frame.style.outlineOffset = '2px';
+                this.addImageHandles(frame);
+                this.selectedImage = { element: image, frame, questionUid: question.uid };
+            },
+
+            clearSelectedImage() {
+                if (this.selectedImage && this.selectedImage.frame && this.selectedImage.frame.isConnected) {
+                    this.selectedImage.frame.querySelectorAll('.question-image-handle').forEach((handle) => handle.remove());
+                    this.selectedImage.frame.style.outline = '';
+                    this.selectedImage.frame.style.outlineOffset = '';
+                }
+                this.selectedImage = null;
+                this.imageResize = null;
+            },
+
+            isImageSelectedInQuestion(question) {
+                return Boolean(
+                    question
+                    && this.selectedImage
+                    && this.selectedImage.questionUid === question.uid
+                    && this.selectedImage.element
+                    && this.selectedImage.element.isConnected
+                );
+            },
+
+            startImageResize(event, handle) {
+                if (!this.selectedImage || !this.selectedImage.element) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const image = this.selectedImage.element;
+                const frame = this.selectedImage.frame || image.closest('.question-image-frame');
+                const editor = image.closest('[contenteditable]');
+                const rect = image.getBoundingClientRect();
+                this.imageResize = {
+                    handle,
+                    image,
+                    frame,
+                    editor,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    startWidth: rect.width,
+                    startHeight: rect.height,
+                    aspect: rect.width / Math.max(rect.height, 1),
+                    maxWidth: editor ? editor.clientWidth : 1400
+                };
+                document.body.style.userSelect = 'none';
+            },
+
+            handleImageResizeMove(event) {
+                if (!this.imageResize) {
+                    return;
+                }
+                const resize = this.imageResize;
+                const dx = event.clientX - resize.startX;
+                const dy = event.clientY - resize.startY;
+                const handle = resize.handle;
+                const horizontalDelta = handle.includes('e') ? dx : (handle.includes('w') ? -dx : 0);
+                const verticalDelta = (handle.includes('s') ? dy : (handle.includes('n') ? -dy : 0)) * resize.aspect;
+                const delta = handle.length > 1
+                    ? (Math.abs(horizontalDelta) > Math.abs(verticalDelta) ? horizontalDelta : verticalDelta)
+                    : (horizontalDelta || verticalDelta);
+                const nextWidth = Math.min(Math.max(48, resize.startWidth + delta), resize.maxWidth);
+                resize.image.style.width = `${Math.round(nextWidth)}px`;
+                resize.image.style.height = 'auto';
+                resize.image.style.maxWidth = '100%';
+                event.preventDefault();
+            },
+
+            stopImageResize() {
+                if (!this.imageResize) {
+                    return;
+                }
+                const { editor } = this.imageResize;
+                document.body.style.userSelect = '';
+                this.imageResize = null;
+                if (editor) {
+                    const question = this.questions.find((item) => item.uid === this.selectedImage?.questionUid);
+                    if (question) {
+                        this.syncEditor(question, editor);
+                    }
+                }
+            },
+
+            alignSelectedImage(question, alignment) {
+                if (!this.isImageSelectedInQuestion(question)) {
+                    return;
+                }
+                const image = this.selectedImage.element;
+                const frame = this.selectedImage.frame || this.ensureImageFrame(image);
+                frame.style.float = 'none';
+                frame.style.clear = 'none';
+                frame.style.verticalAlign = '';
+                if (alignment === 'center') {
+                    frame.style.display = 'block';
+                    frame.style.margin = '0.5rem auto';
+                } else if (alignment === 'right') {
+                    frame.style.display = 'block';
+                    frame.style.margin = '0.5rem 0 0.5rem auto';
+                } else {
+                    frame.style.display = 'block';
+                    frame.style.margin = '0.5rem auto 0.5rem 0';
+                }
+                const editor = this.editorForQuestion(question);
+                if (editor) {
+                    this.syncEditor(question, editor);
+                }
+            },
+
+            handleImageKeydown(event) {
+                if (!this.selectedImage || !['Backspace', 'Delete'].includes(event.key)) {
+                    return;
+                }
+                const image = this.selectedImage.element;
+                const question = this.questions.find((item) => item.uid === this.selectedImage.questionUid);
+                const editor = question ? this.editorForQuestion(question) : null;
+                const active = document.activeElement;
+                const isFormField = active && ['INPUT', 'TEXTAREA', 'SELECT', 'MATH-FIELD'].includes(active.tagName);
+                const isAnotherEditor = active && active.isContentEditable && active !== editor;
+                if (isFormField || isAnotherEditor) {
+                    return;
+                }
+                if (!image || !image.isConnected) {
+                    this.clearSelectedImage();
+                    return;
+                }
+                const frame = this.selectedImage.frame || image.closest('.question-image-frame');
+                if (frame && frame.isConnected) {
+                    frame.remove();
+                } else {
+                    image.remove();
+                }
+                this.clearSelectedImage();
+                if (question && editor) {
+                    this.syncEditor(question, editor);
+                }
+                event.preventDefault();
+            },
+
+            acceptedRangeText(question) {
+                const answer = parseFloat(question.correct_answers[0]);
+                const tolerance = parseFloat(question.tolerance_percent) || 0;
+                if (!Number.isFinite(answer)) {
+                    return 'Set a numeric answer';
+                }
+                const offset = Math.abs(answer) * tolerance / 100;
+                return `${this.formatNumber(answer - offset)} to ${this.formatNumber(answer + offset)}`;
+            },
+
+            serializeQuestions() {
+                return this.questions.map((question) => {
+                    const choices = question.choices.map((choice, index) => ({
+                        id: choice.id,
+                        label: this.choiceLetter(index),
+                        text: choice.text
+                    }));
+                    const correctAnswers = Array.isArray(question.correct_answers) ? question.correct_answers.filter((answer) => answer !== null && answer !== undefined && String(answer).trim() !== '') : [];
+                    const payload = {
+                        text: question.text || question.content.plain_text || '',
+                        content: question.content,
+                        type: question.type,
+                        points: question.points || 0,
+                        choices: question.type === 'multiple_choice' ? choices : [],
+                        correct_answers: correctAnswers,
+                        correct_answer: correctAnswers.join(', ')
+                    };
+                    if (question.type === 'number') {
+                        payload.tolerance_percent = question.tolerance_percent || 0;
+                    }
+                    return payload;
+                });
+            },
+
             submitForm() {
-                this.questionsJsonPayload = JSON.stringify(this.questions);
+                this.questions.forEach((question) => {
+                    const editor = this.editorForQuestion(question);
+                    if (editor) {
+                        this.syncEditor(question, editor);
+                    }
+                });
+                this.questionsJsonPayload = JSON.stringify(this.serializeQuestions());
+            },
+
+            typesetMath(target) {
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    window.MathJax.typesetPromise([target]).catch(() => {});
+                }
+            },
+
+            choiceLetter(index) {
+                return String.fromCharCode(65 + index);
+            },
+
+            newUid(prefix) {
+                return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+            },
+
+            formatNumber(value) {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return '0';
+                }
+                return number.toFixed(4).replace(/\.?0+$/, '');
+            },
+
+            escapeHtml(value) {
+                const div = document.createElement('div');
+                div.textContent = value;
+                return div.innerHTML;
             }
         }));
     });
 </script>
+
 {% endblock %}

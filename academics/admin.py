@@ -10,9 +10,16 @@ from .models import (
     Enrollment,
     Lesson,
     Profile,
+    School,
     SectionEnrollment,
     Submission,
 )
+
+
+@admin.register(School)
+class SchoolAdmin(admin.ModelAdmin):
+    list_display = ("name", "school_code", "teacher_code", "admin_code", "created_at")
+    search_fields = ("name", "school_code", "teacher_code", "admin_code")
 
 
 @admin.register(Profile)

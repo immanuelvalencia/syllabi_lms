@@ -459,3 +459,23 @@ def generate_resources_task(session_id, include_videos=True, include_books=True)
         except Exception:
             pass
         raise e
+
+
+@shared_task
+def generate_submission_analysis_task(submission_id, answers_breakdown, student_notes):
+    from academics.models import Submission
+    from academics.services import generate_submission_analysis
+    try:
+        submission = Submission.objects.get(id=submission_id)
+        analysis_text = generate_submission_analysis(submission, answers_breakdown, student_notes)
+        submission.ai_analysis = analysis_text
+        submission.save(update_fields=["ai_analysis"])
+        return analysis_text
+    except Exception as e:
+        try:
+            submission = Submission.objects.get(id=submission_id)
+            submission.ai_analysis = f"Error during analysis: {str(e)}"
+            submission.save(update_fields=["ai_analysis"])
+        except Exception:
+            pass
+        raise e

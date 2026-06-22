@@ -19,14 +19,43 @@
                 {% for enrollment in enrollments %}
                     <article class="relative flex flex-col justify-between overflow-hidden rounded-xl bg-white border border-gray-200 hover:border-green-300 hover:shadow-md transition-all p-5 h-full">
                         <div>
-                            <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">{{ enrollment.course.code }}</span>
-                            <h3 class="text-lg font-semibold leading-6 text-gray-900 mt-3 group-hover:text-green-600">
+                            <div class="flex justify-between items-center">
+                                <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">{{ enrollment.course.code }}</span>
+                                {% if enrollment.enrolled_section %}
+                                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-600/20">{{ enrollment.enrolled_section.name }}</span>
+                                {% endif %}
+                            </div>
+                            
+                            <h3 class="text-lg font-bold leading-6 text-gray-900 mt-3 group-hover:text-green-600">
                                 <a href="{{ enrollment.course.get_absolute_url }}">
                                     <span class="absolute inset-0"></span>
                                     {{ enrollment.course.title }}
                                 </a>
                             </h3>
-                            <p class="mt-1 text-sm text-gray-500">{{ enrollment.current_lesson.title|default:"Start the next lesson" }}</p>
+                            
+                            <!-- Section Schedule Info -->
+                            <div class="mt-3 text-xs text-gray-500 flex flex-col gap-1 border-b border-gray-100 pb-3">
+                                {% if enrollment.enrolled_section %}
+                                    <span class="inline-flex items-center gap-1.5 text-green-700 font-semibold">
+                                        <i class="bi bi-calendar3"></i>
+                                        {{ enrollment.enrolled_section.meeting_days|default:"Days TBD" }}
+                                        {% if enrollment.enrolled_section.start_time %}
+                                            ({{ enrollment.enrolled_section.start_time|time:"g:i A" }} - {{ enrollment.enrolled_section.end_time|time:"g:i A" }})
+                                        {% endif %}
+                                    </span>
+                                    <span class="inline-flex items-center gap-1.5 text-gray-600">
+                                        <i class="bi bi-geo-alt"></i>
+                                        Room: {{ enrollment.enrolled_section.location|default:"TBD" }}
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1.5 text-amber-600 font-semibold">
+                                        <i class="bi bi-exclamation-triangle"></i>
+                                        No section assigned
+                                    </span>
+                                {% endif %}
+                            </div>
+
+                            <p class="mt-3 text-sm text-gray-500"><span class="font-semibold text-gray-700">Next Up:</span> {{ enrollment.current_lesson.title|default:"Start the next lesson" }}</p>
                         </div>
                         <div class="mt-6">
                             <div class="flex justify-between items-center mb-1 text-xs text-gray-500 font-medium">

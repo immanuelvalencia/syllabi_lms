@@ -3,7 +3,7 @@
     draggable="{% if can_manage %}true{% else %}false{% endif %}"
     data-assignment-id="{{ assignment.id }}"
 >
-    <a href="{% url 'academics:assignment_detail' course.slug assignment.id %}" class="block">
+    <a href="{% url 'academics:assignment_detail' course.public_id assignment.public_id %}" class="block">
         <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
                 <h4 class="truncate text-sm font-semibold text-gray-900">{{ assignment.title }}</h4>

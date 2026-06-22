@@ -14,6 +14,7 @@ from django.utils import timezone
 from .tasks import process_material_rag
 
 from .forms import ActivitySectionForm, AssignmentForm, CourseForm, CourseSectionForm, SectionEnrollmentForm, CourseMaterialForm
+from .activity_questions import normalize_questions_payload, question_to_editor_payload
 from .models import (
     ActivitySection,
     AiToolRequest,
@@ -37,6 +38,23 @@ from .models import (
 def _profile_for(user):
     profile, _created = Profile.objects.get_or_create(user=user)
     return profile
+
+
+def _course_lookup(identifier):
+    return Q(public_id__iexact=identifier) | Q(slug__iexact=identifier)
+
+
+def _get_course_or_404(identifier, queryset=None):
+    queryset = queryset or Course.objects.all()
+    return get_object_or_404(queryset, _course_lookup(identifier))
+
+
+def _get_assignment_or_404(course, identifier, queryset=None):
+    queryset = queryset or Assignment.objects.all()
+    lookup = Q(public_id__iexact=identifier)
+    if str(identifier).isdigit():
+        lookup |= Q(id=int(identifier))
+    return get_object_or_404(queryset, lookup, course=course)
 
 
 def _can_manage_course(user, course):
@@ -73,8 +91,8 @@ def _build_course_analytics(course, user, section_ids=None):
 
     sections = list(course.sections.all())
     if section_ids is not None:
-        selected_ids = set(section_ids)
-        sections = [section for section in sections if section.id in selected_ids]
+        selected_ids = {str(section_id) for section_id in section_ids}
+        sections = [section for section in sections if str(section.public_id) in selected_ids]
 
     analytics_rows = []
     for section in sections:
@@ -88,7 +106,7 @@ def _build_course_analytics(course, user, section_ids=None):
         graded_count = sum(1 for submission in section_submissions if submission.score is not None)
         expected_count = len(student_ids) * assignment_count
         scored_percentages = [
-            float(submission.score) / submission.assignment.max_score * 100
+            float(submission.score) / float(submission.assignment.max_score) * 100
             for submission in section_submissions
             if submission.score is not None and submission.assignment.max_score
         ]
@@ -153,6 +171,13 @@ def student_dashboard(request):
         .select_related("course", "course__instructor", "current_lesson")
         .prefetch_related("course__assignments")
     )
+    
+    # Map each course to the student's enrolled section for that course
+    section_enrollments = SectionEnrollment.objects.filter(student=request.user).select_related("section", "section__course")
+    section_map = {se.section.course_id: se.section for se in section_enrollments}
+    for enrollment in enrollments:
+        enrollment.enrolled_section = section_map.get(enrollment.course_id)
+
     course_ids = enrollments.values_list("course_id", flat=True)
     upcoming_assignments = Assignment.objects.filter(
         course_id__in=course_ids,
@@ -273,19 +298,72 @@ def academic_admin_dashboard(request):
 
 @login_required
 def course_detail(request, slug):
-    course = get_object_or_404(
+    course = _get_course_or_404(
+        slug,
         Course.objects.select_related("instructor").prefetch_related(
             "lessons",
             "assignments",
             "sections__section_enrollments__student",
             "materials",
         ),
-        slug__iexact=slug,
     )
     if not _can_view_course(request.user, course):
         raise PermissionDenied
 
     profile = _profile_for(request.user)
+    
+    if profile.role == Profile.Role.STUDENT:
+        student_enrollment = SectionEnrollment.objects.filter(
+            student=request.user,
+            section__course=course
+        ).select_related("section").first()
+        student_section = student_enrollment.section if student_enrollment else None
+        
+        materials = course.materials.all().order_by("-created_at")
+        lessons = course.lessons.filter(is_published=True).order_by("order")
+        lesson_plans = course.generated_lesson_plans.filter(
+            status=GeneratedLessonPlan.Status.COMPLETED
+        ).order_by("-created_at")
+        
+        approved_resources = SuggestedResource.objects.filter(
+            session__course=course,
+            is_approved=True
+        ).select_related("session").order_by("resource_type", "title")
+        
+        if student_section:
+            activities = Assignment.objects.filter(
+                Q(course_section=student_section) | Q(course_section__isnull=True),
+                course=course
+            ).select_related("activity_section", "course_section")
+        else:
+            activities = Assignment.objects.filter(
+                course_section__isnull=True,
+                course=course
+            ).select_related("activity_section", "course_section")
+            
+        submissions = Submission.objects.filter(student=request.user, assignment__course=course)
+        submissions_by_assignment_id = {s.assignment_id: s for s in submissions}
+        
+        activities_with_status = []
+        for activity in activities:
+            submission = submissions_by_assignment_id.get(activity.id)
+            activities_with_status.append({
+                "activity": activity,
+                "submission": submission,
+            })
+            
+        context = {
+            "course": course,
+            "profile": profile,
+            "student_section": student_section,
+            "materials": materials,
+            "lessons": lessons,
+            "lesson_plans": lesson_plans,
+            "approved_resources": approved_resources,
+            "activities": activities_with_status,
+        }
+        return render(request, "academics/student_course_detail.html", context)
+
     can_manage = _can_manage_course(request.user, course)
     course_form = CourseForm(instance=course)
     section_form = CourseSectionForm()
@@ -376,12 +454,12 @@ def course_detail(request, slug):
 
 @login_required
 def course_analytics_pdf(request, slug):
-    course = get_object_or_404(
+    course = _get_course_or_404(
+        slug,
         Course.objects.select_related("instructor").prefetch_related(
             "assignments",
             "sections__section_enrollments__student",
         ),
-        slug__iexact=slug,
     )
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
@@ -389,12 +467,7 @@ def course_analytics_pdf(request, slug):
     section_ids = None
     sections_param = request.GET.get("sections", "")
     if sections_param:
-        section_ids = []
-        for value in sections_param.split(","):
-            try:
-                section_ids.append(int(value))
-            except ValueError:
-                continue
+        section_ids = [value.strip() for value in sections_param.split(",") if value.strip()]
 
     analytics = _build_course_analytics(course, request.user, section_ids=section_ids)
 
@@ -551,16 +624,16 @@ def section_detail(request, slug, section_id):
 
 
 def _section_access_context(user, slug, section_id):
-    course = get_object_or_404(
+    course = _get_course_or_404(
+        slug,
         Course.objects.select_related("instructor").prefetch_related("sections"),
-        slug__iexact=slug,
     )
     if not _can_view_course(user, course):
         raise PermissionDenied
 
     section = get_object_or_404(
         CourseSection.objects.select_related("course").prefetch_related("section_enrollments__student__profile"),
-        id=section_id,
+        public_id=section_id,
         course=course,
     )
     can_manage = _can_manage_course(user, course)
@@ -804,7 +877,7 @@ def section_enrollment(request, slug, section_id):
         added_count = len(selected_ids - current_ids)
         removed_count = len(current_ids - selected_ids)
         messages.success(request, f"Roster saved. Added {added_count}, removed {removed_count}.")
-        return redirect("academics:section_students", slug=course.slug, section_id=section.id)
+        return redirect("academics:section_students", slug=course.public_id, section_id=section.public_id)
 
     context = _section_dashboard_context(course, section, can_manage)
     selected_ids = set(section.section_enrollments.values_list("student_id", flat=True))
@@ -880,9 +953,9 @@ def section_grading(request, slug, section_id):
 
 @login_required
 def course_activities(request, slug):
-    course = get_object_or_404(
+    course = _get_course_or_404(
+        slug,
         Course.objects.select_related("instructor").prefetch_related("sections"),
-        slug__iexact=slug,
     )
     if not _can_view_course(request.user, course):
         raise PermissionDenied
@@ -898,11 +971,11 @@ def section_activities(request, slug, section_id):
 
 
 def _render_activities_page(request, course, section, profile, can_manage):
-    redirect_kwargs = {"slug": course.slug}
+    redirect_kwargs = {"slug": course.public_id}
     redirect_name = "academics:course_activities"
     if section:
         redirect_name = "academics:section_activities"
-        redirect_kwargs["section_id"] = section.id
+        redirect_kwargs["section_id"] = section.public_id
 
     if request.method == "POST":
         if not can_manage:
@@ -956,7 +1029,7 @@ def _render_activities_page(request, course, section, profile, can_manage):
 
 @login_required
 def assignment_create(request, slug):
-    course = get_object_or_404(Course.objects.prefetch_related("activity_sections", "sections"), slug__iexact=slug)
+    course = _get_course_or_404(slug, Course.objects.prefetch_related("activity_sections", "sections"))
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     profile = _profile_for(request.user)
@@ -965,26 +1038,23 @@ def assignment_create(request, slug):
     if section_id and section_id.isdigit():
         initial["activity_section"] = course.activity_sections.filter(id=int(section_id)).first()
     course_section_id = request.GET.get("course_section")
-    if course_section_id and course_section_id.isdigit():
-        initial["course_section"] = course.sections.filter(id=int(course_section_id)).first()
+    if course_section_id:
+        initial["course_section"] = course.sections.filter(public_id=course_section_id).first()
 
     if request.method == "POST":
         assignment_form = AssignmentForm(request.POST, course=course)
+        questions_json = request.POST.get('questions_json', '[]')
+        try:
+            questions_data = normalize_questions_payload(json.loads(questions_json))
+        except json.JSONDecodeError:
+            questions_data = []
         if assignment_form.is_valid():
             with transaction.atomic():
                 assignment = assignment_form.save(commit=False)
                 assignment.course = course
                 assignment.instructor = request.user
                 assignment.order = _next_assignment_order(course, assignment.activity_section)
-                
-                # Handle questions JSON
-                questions_json = request.POST.get('questions_json', '[]')
-                try:
-                    questions_data = json.loads(questions_json)
-                except json.JSONDecodeError:
-                    questions_data = []
-
-                total_points = sum(int(q.get('points', 0)) for q in questions_data)
+                total_points = sum(q.get('points', 0) for q in questions_data)
                 assignment.max_score = total_points
                 
                 assignment.save()
@@ -994,29 +1064,33 @@ def assignment_create(request, slug):
                         assignment=assignment,
                         text=q_data.get('text', ''),
                         question_type=q_data.get('type', 'text'),
-                        points=int(q_data.get('points', 1)),
+                        points=q_data.get('points', 1),
                         choices=q_data.get('choices', []),
                         correct_answer=str(q_data.get('correct_answer', '')),
+                        correct_answers=q_data.get('correct_answers', []),
+                        content=q_data.get('content', {}),
+                        answer_settings=q_data.get('answer_settings', {}),
                         order=index
                     )
 
                 messages.success(request, f"{assignment.get_activity_type_display()} created.")
-                return redirect("academics:assignment_detail", slug=course.slug, assignment_id=assignment.id)
+                return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=assignment.public_id)
     else:
         assignment_form = AssignmentForm(course=course, initial=initial)
+        questions_data = []
 
     return render(request, "academics/assignment_form.html", {
         "profile": profile,
         "course": course,
         "can_manage": True,
         "assignment_form": assignment_form,
-        "questions_json": "[]",
+        "questions_data": questions_data,
     })
 
 @login_required
 def assignment_edit(request, slug, assignment_id):
-    course = get_object_or_404(Course, slug__iexact=slug)
-    assignment = get_object_or_404(Assignment, id=assignment_id, course=course)
+    course = _get_course_or_404(slug)
+    assignment = _get_assignment_or_404(course, assignment_id)
     
     if not _can_manage_course(request.user, course) and assignment.instructor != request.user:
         raise PermissionDenied
@@ -1025,17 +1099,15 @@ def assignment_edit(request, slug, assignment_id):
 
     if request.method == "POST":
         assignment_form = AssignmentForm(request.POST, instance=assignment, course=course)
+        questions_json = request.POST.get('questions_json', '[]')
+        try:
+            questions_data = normalize_questions_payload(json.loads(questions_json))
+        except json.JSONDecodeError:
+            questions_data = []
         if assignment_form.is_valid():
             with transaction.atomic():
                 assignment = assignment_form.save(commit=False)
-                
-                questions_json = request.POST.get('questions_json', '[]')
-                try:
-                    questions_data = json.loads(questions_json)
-                except json.JSONDecodeError:
-                    questions_data = []
-
-                total_points = sum(int(q.get('points', 0)) for q in questions_data)
+                total_points = sum(q.get('points', 0) for q in questions_data)
                 assignment.max_score = total_points
                 assignment.save()
 
@@ -1047,26 +1119,20 @@ def assignment_edit(request, slug, assignment_id):
                         assignment=assignment,
                         text=q_data.get('text', ''),
                         question_type=q_data.get('type', 'text'),
-                        points=int(q_data.get('points', 1)),
+                        points=q_data.get('points', 1),
                         choices=q_data.get('choices', []),
                         correct_answer=str(q_data.get('correct_answer', '')),
+                        correct_answers=q_data.get('correct_answers', []),
+                        content=q_data.get('content', {}),
+                        answer_settings=q_data.get('answer_settings', {}),
                         order=index
                     )
 
                 messages.success(request, f"{assignment.get_activity_type_display()} updated.")
-                return redirect("academics:assignment_detail", slug=course.slug, assignment_id=assignment.id)
+                return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=assignment.public_id)
     else:
         assignment_form = AssignmentForm(instance=assignment, course=course)
-        
-    existing_questions = []
-    for q in assignment.questions.all():
-        existing_questions.append({
-            'text': q.text,
-            'type': q.question_type,
-            'points': q.points,
-            'choices': q.choices,
-            'correct_answer': q.correct_answer,
-        })
+        questions_data = [question_to_editor_payload(q) for q in assignment.questions.all()]
 
     return render(request, "academics/assignment_form.html", {
         "profile": profile,
@@ -1074,13 +1140,13 @@ def assignment_edit(request, slug, assignment_id):
         "can_manage": True,
         "assignment": assignment,
         "assignment_form": assignment_form,
-        "questions_json": json.dumps(existing_questions),
+        "questions_data": questions_data,
     })
 
 @login_required
 def assignment_delete(request, slug, assignment_id):
-    course = get_object_or_404(Course, slug__iexact=slug)
-    assignment = get_object_or_404(Assignment, id=assignment_id, course=course)
+    course = _get_course_or_404(slug)
+    assignment = _get_assignment_or_404(course, assignment_id)
     
     if not _can_manage_course(request.user, course) and assignment.instructor != request.user:
         raise PermissionDenied
@@ -1089,30 +1155,141 @@ def assignment_delete(request, slug, assignment_id):
         activity_type = assignment.get_activity_type_display()
         assignment.delete()
         messages.success(request, f"{activity_type} deleted.")
-        return redirect("academics:course_activities", slug=course.slug)
+        return redirect("academics:course_activities", slug=course.public_id)
         
-    return redirect("academics:assignment_detail", slug=course.slug, assignment_id=assignment.id)
+    return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=assignment.public_id)
 
 
 @login_required
 def assignment_detail(request, slug, assignment_id):
-    course = get_object_or_404(Course.objects.prefetch_related("activity_sections", "sections"), slug__iexact=slug)
+    course = _get_course_or_404(slug, Course.objects.prefetch_related("activity_sections", "sections"))
     if not _can_view_course(request.user, course):
         raise PermissionDenied
-    assignment = get_object_or_404(
+    assignment = _get_assignment_or_404(
+        course,
+        assignment_id,
         Assignment.objects.select_related("course", "course_section", "activity_section").prefetch_related("submissions"),
-        id=assignment_id,
-        course=course,
     )
     profile = _profile_for(request.user)
     can_manage = _can_manage_course(request.user, course)
 
+    from decimal import Decimal, InvalidOperation
+
     if request.method == "POST":
         if not can_manage:
-            raise PermissionDenied
-        if request.POST.get("action") == "copy_assignment":
+            # Student assignment submission handling
+            existing_sub = Submission.objects.filter(assignment=assignment, student=request.user).first()
+            if existing_sub and existing_sub.score is not None:
+                messages.error(request, "You cannot modify a submission that has already been graded.")
+                return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=assignment.public_id)
+
+            # Collect dynamic answers from POST fields starting with 'question_'
+            answers = {}
+            for key, val in request.POST.items():
+                if key.startswith("question_"):
+                    q_id = key.split("_")[1]
+                    answers[q_id] = val.strip()
+            
+            student_notes = request.POST.get("content", "").strip()
+            attachment_url = request.POST.get("attachment_url", "").strip()
+            
+            # Serialize content as JSON
+            submission_content = json.dumps({
+                "answers": answers,
+                "student_notes": student_notes
+            })
+
+            # Auto-grade matching answers
+            total_points = Decimal("0.00")
+            earned_points = Decimal("0.00")
+            has_manual_grade = False
+            
+            questions = assignment.questions.all()
+            if questions.exists():
+                for q in questions:
+                    q_points = Decimal(str(q.points))
+                    total_points += q_points
+                    student_ans = answers.get(str(q.id), "").strip()
+                    
+                    if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+                        correct_ids = q.correct_answers or []
+                        if not correct_ids and q.correct_answer:
+                            correct_ids = [q.correct_answer]
+                        if student_ans in correct_ids:
+                            earned_points += q_points
+                    elif q.question_type == Question.QuestionType.TRUE_FALSE:
+                        correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "True")
+                        if student_ans.lower() == correct_ans.lower():
+                            earned_points += q_points
+                    elif q.question_type == Question.QuestionType.NUMBER:
+                        correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                        if correct_ans and student_ans:
+                            try:
+                                accepted_range = q.answer_settings.get("accepted_range")
+                                if accepted_range:
+                                    val_min = Decimal(str(accepted_range["min"]))
+                                    val_max = Decimal(str(accepted_range["max"]))
+                                    student_val = Decimal(student_ans)
+                                    if val_min <= student_val <= val_max:
+                                        earned_points += q_points
+                                else:
+                                    if Decimal(student_ans) == Decimal(correct_ans):
+                                        earned_points += q_points
+                            except (InvalidOperation, ValueError, TypeError):
+                                if student_ans == correct_ans:
+                                    earned_points += q_points
+                    elif q.question_type == Question.QuestionType.TEXT:
+                        correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                        if correct_ans:
+                            if student_ans.lower() == correct_ans.lower():
+                                earned_points += q_points
+                        else:
+                            has_manual_grade = True
+            else:
+                has_manual_grade = True
+
+            defaults = {
+                "content": submission_content,
+                "attachment_url": attachment_url,
+                "submitted_at": timezone.now()
+            }
+            
+            if not has_manual_grade and questions.exists():
+                defaults["score"] = earned_points
+                defaults["graded_at"] = timezone.now()
+                defaults["feedback"] = "Auto-graded by System."
+
+            Submission.objects.update_or_create(
+                assignment=assignment,
+                student=request.user,
+                defaults=defaults
+            )
+
+            if not has_manual_grade and questions.exists():
+                messages.success(request, f"Your submission has been auto-graded. Score: {earned_points} / {assignment.max_score}")
+            else:
+                messages.success(request, "Your submission has been received successfully and is awaiting grading.")
+            return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=assignment.public_id)
+
+        action = request.POST.get("action")
+        if action == "grade_submission":
+            student_id = request.POST.get("student_id")
+            score = request.POST.get("score")
+            feedback = request.POST.get("feedback", "")
+            sub = get_object_or_404(Submission, assignment=assignment, student_id=student_id)
+            try:
+                sub.score = Decimal(score)
+                sub.feedback = feedback
+                sub.graded_at = timezone.now()
+                sub.save()
+                messages.success(request, f"Grade updated for {sub.student.get_full_name() or sub.student.username}.")
+            except (InvalidOperation, ValueError):
+                messages.error(request, "Invalid score value.")
+            return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=assignment.public_id)
+
+        if action == "copy_assignment":
             target_section_id = request.POST.get("target_section")
-            target_section = get_object_or_404(CourseSection, id=target_section_id, course=course)
+            target_section = get_object_or_404(CourseSection, public_id=target_section_id, course=course)
             copied_assignment, created = Assignment.objects.update_or_create(
                 course=course,
                 course_section=target_section,
@@ -1126,17 +1303,31 @@ def assignment_detail(request, slug, assignment_id):
                     "order": _next_assignment_order(course, assignment.activity_section),
                 },
             )
+            copied_assignment.questions.all().delete()
+            for index, question in enumerate(assignment.questions.all()):
+                Question.objects.create(
+                    assignment=copied_assignment,
+                    text=question.text,
+                    question_type=question.question_type,
+                    points=question.points,
+                    choices=question.choices,
+                    correct_answer=question.correct_answer,
+                    correct_answers=question.correct_answers,
+                    content=question.content,
+                    answer_settings=question.answer_settings,
+                    order=index,
+                )
             action_word = "copied to" if created else "updated in"
             messages.success(request, f"{assignment.title} {action_word} {target_section.name}.")
-            return redirect("academics:assignment_detail", slug=course.slug, assignment_id=copied_assignment.id)
-        if request.POST.get("action") == "delete_assignment":
+            return redirect("academics:assignment_detail", slug=course.public_id, assignment_id=copied_assignment.public_id)
+        if action == "delete_assignment":
             title = assignment.title
-            redirect_kwargs = {"slug": course.slug}
+            redirect_kwargs = {"slug": course.public_id}
             if assignment.course_section:
-                section_id = assignment.course_section_id
+                section_id = assignment.course_section.public_id
                 messages.success(request, f"{title} deleted.")
                 assignment.delete()
-                return redirect("academics:section_activities", slug=course.slug, section_id=section_id)
+                return redirect("academics:section_activities", slug=course.public_id, section_id=section_id)
             assignment.delete()
             messages.success(request, f"{title} deleted.")
             return redirect("academics:course_activities", **redirect_kwargs)
@@ -1159,14 +1350,120 @@ def assignment_detail(request, slug, assignment_id):
         .order_by("student__last_name", "student__first_name", "student__username")
     )
     submissions_by_student_id = {submission.student_id: submission for submission in submissions}
-    submission_rows = [
-        {
+    
+    submission_rows = []
+    for student in students:
+        sub = submissions_by_student_id.get(student.id)
+        sub_answers = []
+        student_notes = ""
+        attachment_url = ""
+        if sub:
+            attachment_url = sub.attachment_url
+            try:
+                data = json.loads(sub.content)
+                answers_dict = data.get("answers", {})
+                student_notes = data.get("student_notes", "")
+                
+                # Build a list of question-answer pairs
+                for q in assignment.questions.all():
+                    ans = answers_dict.get(str(q.id), "")
+                    is_q_correct = False
+                    if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+                        correct_ids = q.correct_answers or []
+                        if not correct_ids and q.correct_answer:
+                            correct_ids = [q.correct_answer]
+                        is_q_correct = (ans in correct_ids)
+                    elif q.question_type == Question.QuestionType.TRUE_FALSE:
+                        correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "True")
+                        is_q_correct = (ans.lower() == correct_ans.lower())
+                    elif q.question_type == Question.QuestionType.NUMBER:
+                        correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                        if correct_ans and ans:
+                            try:
+                                accepted_range = q.answer_settings.get("accepted_range")
+                                if accepted_range:
+                                    val_min = Decimal(str(accepted_range["min"]))
+                                    val_max = Decimal(str(accepted_range["max"]))
+                                    student_val = Decimal(ans)
+                                    is_q_correct = (val_min <= student_val <= val_max)
+                                else:
+                                    is_q_correct = (Decimal(ans) == Decimal(correct_ans))
+                            except (InvalidOperation, ValueError, TypeError):
+                                is_q_correct = (ans == correct_ans)
+                    elif q.question_type == Question.QuestionType.TEXT:
+                        correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                        is_q_correct = (correct_ans and ans.lower() == correct_ans.lower())
+                        
+                    ans_display = ans
+                    if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+                        for choice in q.choices:
+                            if choice.get("id") == ans:
+                                ans_display = f"{choice.get('label')}. {choice.get('text')}"
+                                break
+                    
+                    sub_answers.append({
+                        "question_text": q.text,
+                        "student_answer": ans_display,
+                        "correct_answer": q.correct_answer,
+                        "is_correct": is_q_correct,
+                        "points": q.points,
+                    })
+            except json.JSONDecodeError:
+                student_notes = sub.content
+                
+        submission_rows.append({
             "student": student,
-            "submission": submissions_by_student_id.get(student.id),
-        }
-        for student in students
-    ]
+            "submission": sub,
+            "answers": sub_answers,
+            "student_notes": student_notes,
+            "attachment_url": attachment_url
+        })
+
     copy_sections = course.sections.exclude(id=assignment.course_section_id).order_by("order", "name")
+
+    student_submission = None
+    questions = list(assignment.questions.all())
+    
+    if not can_manage:
+        student_submission = Submission.objects.filter(assignment=assignment, student=request.user).first()
+        submission_data = {}
+        if student_submission:
+            try:
+                submission_data = json.loads(student_submission.content)
+            except json.JSONDecodeError:
+                submission_data = {"student_notes": student_submission.content}
+            student_submission.student_notes = submission_data.get("student_notes", "")
+                
+        answers_dict = submission_data.get("answers", {})
+        for q in questions:
+            q.student_answer = answers_dict.get(str(q.id), "")
+            q.is_correct = False
+            if q.student_answer:
+                if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+                    correct_ids = q.correct_answers or []
+                    if not correct_ids and q.correct_answer:
+                        correct_ids = [q.correct_answer]
+                    q.is_correct = (q.student_answer in correct_ids)
+                elif q.question_type == Question.QuestionType.TRUE_FALSE:
+                    correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "True")
+                    q.is_correct = (q.student_answer.lower() == correct_ans.lower())
+                elif q.question_type == Question.QuestionType.NUMBER:
+                    correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                    if correct_ans:
+                        try:
+                            accepted_range = q.answer_settings.get("accepted_range")
+                            if accepted_range:
+                                val_min = Decimal(str(accepted_range["min"]))
+                                val_max = Decimal(str(accepted_range["max"]))
+                                student_val = Decimal(q.student_answer)
+                                q.is_correct = (val_min <= student_val <= val_max)
+                            else:
+                                q.is_correct = (Decimal(q.student_answer) == Decimal(correct_ans))
+                        except (InvalidOperation, ValueError, TypeError):
+                            q.is_correct = (q.student_answer == correct_ans)
+                elif q.question_type == Question.QuestionType.TEXT:
+                    correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+                    q.is_correct = (correct_ans and q.student_answer.lower() == correct_ans.lower())
 
     return render(request, "academics/assignment_detail.html", {
         "profile": profile,
@@ -1178,6 +1475,142 @@ def assignment_detail(request, slug, assignment_id):
         "expected_count": len(students),
         "expected_label": expected_label,
         "copy_sections": copy_sections,
+        "student_submission": student_submission,
+        "questions": questions,
+    })
+
+
+@login_required
+def grade_submission(request, slug, assignment_id, student_id):
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    from decimal import Decimal, InvalidOperation
+    from .services import generate_submission_analysis
+
+    course = _get_course_or_404(slug, Course.objects.prefetch_related("activity_sections", "sections"))
+    if not _can_manage_course(request.user, course):
+        raise PermissionDenied
+
+    assignment = _get_assignment_or_404(
+        course,
+        assignment_id,
+        Assignment.objects.select_related("course", "course_section", "activity_section"),
+    )
+    student = get_object_or_404(User, id=student_id)
+    submission = get_object_or_404(Submission, assignment=assignment, student=student)
+
+    # Parse student answers
+    submission_data = {}
+    try:
+        submission_data = json.loads(submission.content)
+    except json.JSONDecodeError:
+        submission_data = {"student_notes": submission.content}
+
+    answers_dict = submission_data.get("answers", {})
+    student_notes = submission_data.get("student_notes", "")
+    
+    questions = list(assignment.questions.all())
+    answers_breakdown = []
+    
+    for q in questions:
+        ans = answers_dict.get(str(q.id), "")
+        is_q_correct = False
+        if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+            correct_ids = q.correct_answers or []
+            if not correct_ids and q.correct_answer:
+                correct_ids = [q.correct_answer]
+            is_q_correct = (ans in correct_ids)
+        elif q.question_type == Question.QuestionType.TRUE_FALSE:
+            correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "True")
+            is_q_correct = (ans.lower() == correct_ans.lower())
+        elif q.question_type == Question.QuestionType.NUMBER:
+            correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+            if correct_ans and ans:
+                try:
+                    accepted_range = q.answer_settings.get("accepted_range")
+                    if accepted_range:
+                        val_min = Decimal(str(accepted_range["min"]))
+                        val_max = Decimal(str(accepted_range["max"]))
+                        student_val = Decimal(ans)
+                        is_q_correct = (val_min <= student_val <= val_max)
+                    else:
+                        is_q_correct = (Decimal(ans) == Decimal(correct_ans))
+                except (InvalidOperation, ValueError, TypeError):
+                    is_q_correct = (ans == correct_ans)
+        elif q.question_type == Question.QuestionType.TEXT:
+            correct_ans = q.correct_answer or (q.correct_answers[0] if q.correct_answers else "")
+            is_q_correct = (correct_ans and ans.lower() == correct_ans.lower())
+            
+        ans_display = ans
+        if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+            for choice in q.choices:
+                if choice.get("id") == ans:
+                    ans_display = f"{choice.get('label')}. {choice.get('text')}"
+                    break
+        
+        correct_ans_display = ""
+        if q.question_type == Question.QuestionType.MULTIPLE_CHOICE:
+            correct_ids = q.correct_answers or []
+            if not correct_ids and q.correct_answer:
+                correct_ids = [q.correct_answer]
+            
+            displays = []
+            for cid in correct_ids:
+                mapped = False
+                for choice in q.choices:
+                    if choice.get("id") == cid:
+                        displays.append(f"{choice.get('label')}. {choice.get('text')}")
+                        mapped = True
+                        break
+                if not mapped:
+                    displays.append(cid)
+            correct_ans_display = ", ".join(displays)
+        else:
+            correct_ans_display = q.correct_answer or (", ".join(q.correct_answers) if q.correct_answers else "")
+        
+        answers_breakdown.append({
+            "id": q.id,
+            "question_text": q.text,
+            "question": q,
+            "student_answer": ans_display,
+            "correct_answer": correct_ans_display,
+            "is_correct": is_q_correct,
+            "points": q.points,
+            "question_type": q.question_type,
+            "choices": q.choices,
+        })
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "grade_submission":
+            score = request.POST.get("score")
+            feedback = request.POST.get("feedback", "")
+            try:
+                submission.score = Decimal(score)
+                submission.feedback = feedback
+                submission.graded_at = timezone.now()
+                submission.save()
+                messages.success(request, f"Grade updated for {student.get_full_name() or student.username}.")
+            except (InvalidOperation, ValueError):
+                messages.error(request, "Invalid score value.")
+            return redirect("academics:grade_submission", slug=course.public_id, assignment_id=assignment.public_id, student_id=student.id)
+
+        elif action == "analyze_submission":
+            from .tasks import generate_submission_analysis_task
+            submission.ai_analysis = "PENDING"
+            submission.save()
+            generate_submission_analysis_task.delay(submission.id, answers_breakdown, student_notes)
+            messages.success(request, "Analysis generation started in the background.")
+            return redirect("academics:grade_submission", slug=course.public_id, assignment_id=assignment.public_id, student_id=student.id)
+
+    return render(request, "academics/grade_submission.html", {
+        "course": course,
+        "assignment": assignment,
+        "student": student,
+        "submission": submission,
+        "answers_breakdown": answers_breakdown,
+        "student_notes": student_notes,
+        "ai_analysis": submission.ai_analysis,
     })
 
 
@@ -1185,7 +1618,7 @@ def assignment_detail(request, slug, assignment_id):
 def assignment_reorder(request, slug):
     if request.method != "POST":
         return JsonResponse({"error": "POST required."}, status=405)
-    course = get_object_or_404(Course, slug__iexact=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
 
@@ -1278,7 +1711,7 @@ from .services import generate_rag_response
 
 @login_required
 def ai_generate(request, slug):
-    course = get_object_or_404(Course, public_id=slug)
+    course = _get_course_or_404(slug)
     
     if request.method == "POST":
         try:
@@ -1493,7 +1926,7 @@ def create_user(request):
 
 @login_required
 def ai_lesson_plan(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
@@ -1530,7 +1963,7 @@ def ai_lesson_plan(request, slug):
         )
 
         messages.info(request, "Lesson plan generation started in the background.")
-        return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=plan.id)
+        return redirect("academics:lesson_plan_detail", slug=course.public_id, plan_id=plan.id)
 
     materials = course.materials.all().order_by("-created_at")
     return render(request, "academics/ai_lesson_plan.html", {
@@ -1541,11 +1974,14 @@ def ai_lesson_plan(request, slug):
 
 @login_required
 def lesson_plan_list(request, slug):
-    course = get_object_or_404(Course, slug=slug)
-    if not _can_manage_course(request.user, course):
+    course = _get_course_or_404(slug)
+    if not _can_view_course(request.user, course):
         raise PermissionDenied
     
     plans = course.generated_lesson_plans.all()
+    if _profile_for(request.user).role == Profile.Role.STUDENT:
+        plans = plans.filter(status=GeneratedLessonPlan.Status.COMPLETED)
+        
     return render(request, "academics/lesson_plan_list.html", {
         "course": course,
         "plans": plans,
@@ -1554,13 +1990,17 @@ def lesson_plan_list(request, slug):
 
 @login_required
 def lesson_plan_detail(request, slug, plan_id):
-    course = get_object_or_404(Course, slug=slug)
-    if not _can_manage_course(request.user, course):
+    course = _get_course_or_404(slug)
+    if not _can_view_course(request.user, course):
         raise PermissionDenied
     
     plan = get_object_or_404(GeneratedLessonPlan, pk=plan_id, course=course)
+    profile = _profile_for(request.user)
+    can_manage = _can_manage_course(request.user, course)
 
     if request.method == "POST":
+        if not can_manage:
+            raise PermissionDenied
         content = request.POST.get("content")
         title = request.POST.get("title")
         if content and title:
@@ -1568,17 +2008,23 @@ def lesson_plan_detail(request, slug, plan_id):
             plan.title = title
             plan.save()
             messages.success(request, "Lesson plan updated successfully.")
-            return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=plan.id)
+            return redirect("academics:lesson_plan_detail", slug=course.public_id, plan_id=plan.id)
+
+    all_plans = course.generated_lesson_plans.all()
+    if profile.role == Profile.Role.STUDENT:
+        all_plans = all_plans.filter(status=GeneratedLessonPlan.Status.COMPLETED)
 
     return render(request, "academics/lesson_plan_detail.html", {
         "course": course,
         "plan": plan,
-        "profile": _profile_for(request.user),
+        "profile": profile,
+        "all_plans": all_plans,
+        "can_manage": can_manage,
     })
 
 @login_required
 def lesson_plan_delete(request, slug, plan_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
@@ -1587,14 +2033,14 @@ def lesson_plan_delete(request, slug, plan_id):
     if request.method == "POST":
         plan.delete()
         messages.success(request, "Lesson plan deleted.")
-        return redirect("academics:lesson_plan_list", slug=course.slug)
+        return redirect("academics:lesson_plan_list", slug=course.public_id)
     
     # Can render a confirmation or redirect back
-    return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=plan.id)
+    return redirect("academics:lesson_plan_detail", slug=course.public_id, plan_id=plan.id)
 
 @login_required
 def ai_activity_sheets(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     return render(request, "academics/ai_activity_sheets.html", {
@@ -1608,7 +2054,7 @@ import json
 
 @login_required
 def toggle_resource_reject(request, slug, session_id, resource_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1623,7 +2069,7 @@ def toggle_resource_reject(request, slug, session_id, resource_id):
 
 @login_required
 def update_resource_tags(request, slug, session_id, resource_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1640,7 +2086,7 @@ def update_resource_tags(request, slug, session_id, resource_id):
 
 @login_required
 def manage_website_filters(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1657,7 +2103,7 @@ def manage_website_filters(request, slug):
 
 @login_required
 def delete_website_filter(request, slug, filter_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1669,7 +2115,7 @@ def delete_website_filter(request, slug, filter_id):
 
 @login_required
 def manage_resource_tags(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1684,7 +2130,7 @@ def manage_resource_tags(request, slug):
 
 @login_required
 def delete_resource_tag(request, slug, tag_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1696,7 +2142,7 @@ def delete_resource_tag(request, slug, tag_id):
 
 @login_required
 def resource_assistant_index(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
@@ -1721,7 +2167,7 @@ def resource_assistant_index(request, slug):
 
 @login_required
 def ai_resource_assistant(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
@@ -1775,7 +2221,7 @@ def ai_resource_assistant(request, slug):
 
 @login_required
 def resource_session_detail(request, slug, session_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1791,7 +2237,7 @@ def resource_session_detail(request, slug, session_id):
 
 @login_required
 def resource_session_delete(request, slug, session_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1803,7 +2249,7 @@ def resource_session_delete(request, slug, session_id):
 
 @login_required
 def toggle_resource_approval(request, slug, session_id, resource_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1818,7 +2264,7 @@ def toggle_resource_approval(request, slug, session_id, resource_id):
 
 @login_required
 def activity_sheet_detail(request, slug, sheet_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
@@ -1841,7 +2287,7 @@ def activity_sheet_detail(request, slug, sheet_id):
 
 @login_required
 def activity_sheet_delete(request, slug, sheet_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1854,7 +2300,7 @@ def activity_sheet_delete(request, slug, sheet_id):
 
 @login_required
 def delete_approved_resource(request, slug, resource_id):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1866,7 +2312,7 @@ def delete_approved_resource(request, slug, resource_id):
 
 @login_required
 def remove_duplicate_resources(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1885,7 +2331,7 @@ def remove_duplicate_resources(request, slug):
 
 @login_required
 def manual_add_resource(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         
@@ -1915,29 +2361,29 @@ def manual_add_resource(request, slug):
 
 @login_required
 def lesson_plan_index(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
     latest_plan = course.generated_lesson_plans.first()
     if latest_plan:
-        return redirect("academics:lesson_plan_detail", slug=course.slug, plan_id=latest_plan.id)
-    return redirect("academics:ai_lesson_plan", slug=course.slug)
+        return redirect("academics:lesson_plan_detail", slug=course.public_id, plan_id=latest_plan.id)
+    return redirect("academics:ai_lesson_plan", slug=course.public_id)
 
 @login_required
 def activity_sheet_index(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
     
     latest_sheet = course.generated_activity_sheets.first()
     if latest_sheet:
-        return redirect("academics:activity_sheet_detail", slug=course.slug, sheet_id=latest_sheet.id)
-    return redirect("academics:ai_activity_sheets", slug=course.slug)
+        return redirect("academics:activity_sheet_detail", slug=course.public_id, sheet_id=latest_sheet.id)
+    return redirect("academics:ai_activity_sheets", slug=course.public_id)
 
 @login_required
 def sync_resource_settings(request, slug):
-    course = get_object_or_404(Course, slug=slug)
+    course = _get_course_or_404(slug)
     if not _can_manage_course(request.user, course):
         raise PermissionDenied
         

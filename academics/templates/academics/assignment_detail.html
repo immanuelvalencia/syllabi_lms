@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% load activity_extras %}
 
 {% block title %}{{ assignment.title }} | {{ course.title }}{% endblock %}
 
 {% block page_header %}
 <div class="mb-4">
-    <a href="{% url 'academics:course_activities' course.slug %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+    <a href="{% url 'academics:course_activities' course.public_id %}" class="flex w-fit items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
         <i class="bi bi-arrow-left"></i> Back to activities
     </a>
 </div>
@@ -21,17 +22,17 @@
                 <select name="target_section" required class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900">
                     <option value="">Copy to course section</option>
                     {% for target_section in copy_sections %}
-                        <option value="{{ target_section.id }}">{{ target_section.name }}</option>
+                        <option value="{{ target_section.public_id }}">{{ target_section.name }}</option>
                     {% endfor %}
                 </select>
                 <button type="submit" {% if not copy_sections %}disabled{% endif %} class="inline-flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
                     <i class="bi bi-copy"></i> Copy
                 </button>
             </form>
-            <a href="{% url 'academics:assignment_edit' course.slug assignment.id %}" class="inline-flex h-10 w-full items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            <a href="{% url 'academics:assignment_edit' course.public_id assignment.public_id %}" class="inline-flex h-10 w-full items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                 <i class="bi bi-pencil"></i> Edit Assignment
             </a>
-            <form method="post" action="{% url 'academics:assignment_delete' course.slug assignment.id %}" onsubmit="return confirm('Delete this assignment? Submitted work for this assignment will also be removed.');">
+            <form method="post" action="{% url 'academics:assignment_delete' course.public_id assignment.public_id %}" onsubmit="return confirm('Delete this assignment? Submitted work for this assignment will also be removed.');">
                 {% csrf_token %}
                 <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-300 hover:bg-red-50">
                     <i class="bi bi-trash"></i> Delete Assignment
@@ -43,6 +44,17 @@
 {% endblock %}
 
 {% block content %}
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['\\(', '\\)']],
+            displayMath: [['\\[', '\\]']],
+            processEscapes: true
+        },
+        svg: { fontCache: 'global' }
+    };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 <div class="space-y-8">
     <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
         <div class="p-6 sm:p-8">
@@ -77,39 +89,100 @@
             {% endif %}
 
             {% if assignment.questions.exists %}
-                <div class="mt-6 rounded-xl border border-gray-200 p-4">
-                    <h2 class="text-sm font-semibold text-gray-900 mb-4">Questions</h2>
-                    <div class="space-y-4">
-                        {% for question in assignment.questions.all %}
-                        <div class="rounded-md bg-gray-50 p-4 border border-gray-100">
-                            <div class="flex justify-between items-start">
-                                <h3 class="font-medium text-gray-900">{{ forloop.counter }}. {{ question.text }}</h3>
-                                <span class="text-sm text-gray-500 font-medium">{{ question.points }} pt{{ question.points|pluralize }}</span>
-                            </div>
-                            
-                            <div class="mt-2 pl-4 border-l-2 border-gray-200">
-                                {% if question.question_type == 'multiple_choice' %}
-                                    <ul class="list-disc pl-4 text-sm text-gray-600 space-y-1">
-                                        {% for choice in question.choices %}
-                                            <li class="{% if choice == question.correct_answer %}font-bold text-green-700{% endif %}">
-                                                {{ choice }} {% if choice == question.correct_answer %}<i class="bi bi-check-circle-fill ml-1"></i>{% endif %}
-                                            </li>
-                                        {% endfor %}
-                                    </ul>
-                                {% elif question.question_type == 'true_false' %}
-                                    <p class="text-sm font-bold text-green-700">Answer: {{ question.correct_answer }}</p>
+                {% if can_manage or student_submission %}
+                    <div class="mt-6 rounded-xl border border-gray-200 p-4">
+                        <h2 class="text-sm font-semibold text-gray-900 mb-4">Questions Overview</h2>
+                        <div class="space-y-4">
+                            {% for question in questions %}
+                            <div class="rounded-md p-4 border 
+                                {% if not can_manage and student_submission.score != None %}
+                                    {% if question.is_correct %}bg-green-50/30 border-green-200{% else %}bg-red-50/30 border-red-200{% endif %}
                                 {% else %}
-                                    <p class="text-sm font-bold text-green-700">Answer: {{ question.correct_answer|default:"(Open ended)" }}</p>
-                                {% endif %}
+                                    bg-gray-50 border-gray-100
+                                {% endif %}">
+                                <div class="flex justify-between items-start">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="font-semibold text-gray-900">Question {{ forloop.counter }}.</div>
+                                        <div class="prose prose-sm mt-2 max-w-none text-gray-900" data-question-content>{{ question|question_content }}</div>
+                                    </div>
+                                    <div class="flex flex-col items-end gap-1">
+                                        <span class="text-sm text-gray-500 font-medium">{{ question.points }} pt{{ question.points|pluralize }}</span>
+                                        {% if not can_manage and student_submission.score != None %}
+                                            {% if question.is_correct %}
+                                                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20"><i class="bi bi-check-circle"></i> Correct</span>
+                                            {% else %}
+                                                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20"><i class="bi bi-x-circle"></i> Incorrect</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-4 pl-4 border-l-2 border-gray-200 space-y-2">
+                                    {% if question.question_type == 'multiple_choice' %}
+                                        <ul class="space-y-1 text-sm text-gray-600">
+                                            {% for choice in question.choices %}
+                                                {% with choice_val=choice.id|default:choice %}
+                                                <li class="flex items-start gap-2 
+                                                    {% if not can_manage and choice_val == question.student_answer %}font-semibold text-gray-900{% endif %}
+                                                    {% if can_manage or student_submission.score != None %}{% if question|choice_is_correct:choice %}font-bold text-green-700{% endif %}{% endif %}">
+                                                    <span class="font-semibold">{{ choice|choice_label:forloop.counter0 }}.</span>
+                                                    <span>{{ choice|choice_text }}</span>
+                                                    {% if not can_manage and choice_val == question.student_answer %}
+                                                        <span class="text-xs font-medium text-gray-500">(Your Answer)</span>
+                                                    {% endif %}
+                                                    {% if can_manage or student_submission.score != None %}
+                                                        {% if question|choice_is_correct:choice %}
+                                                            <i class="bi bi-check-circle-fill text-green-700 ml-1"></i>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                </li>
+                                                {% endwith %}
+                                            {% endfor %}
+                                        </ul>
+                                    {% elif question.question_type == 'true_false' %}
+                                        <div class="text-sm text-gray-600 space-y-1">
+                                            {% if not can_manage %}
+                                                <p class="{% if question.student_answer == 'True' %}font-semibold text-gray-900{% endif %}">True {% if question.student_answer == 'True' %}(Your Answer){% endif %}</p>
+                                                <p class="{% if question.student_answer == 'False' %}font-semibold text-gray-900{% endif %}">False {% if question.student_answer == 'False' %}(Your Answer){% endif %}</p>
+                                            {% endif %}
+                                            {% if can_manage or student_submission.score != None %}
+                                                <p class="text-sm font-bold text-green-700 mt-2">Correct Answer: {{ question|answer_label }}</p>
+                                            {% endif %}
+                                        </div>
+                                    {% elif question.question_type == 'number' %}
+                                        <div class="text-sm text-gray-600 space-y-1">
+                                            {% if not can_manage %}
+                                                <p><span class="font-semibold text-gray-900">Your Answer:</span> {{ question.student_answer|default:"(No answer)" }}</p>
+                                            {% endif %}
+                                            {% if can_manage or student_submission.score != None %}
+                                                <p class="text-sm font-bold text-green-700">Correct Answer: {{ question|answer_label|default:"(Open ended)" }}</p>
+                                                {% if question.answer_settings.accepted_range %}
+                                                    <p class="text-xs text-gray-500">Accepted range: {{ question.answer_settings.accepted_range.min }} to {{ question.answer_settings.accepted_range.max }}</p>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        <div class="text-sm text-gray-600 space-y-1">
+                                            {% if not can_manage %}
+                                                <p><span class="font-semibold text-gray-900">Your Answer:</span></p>
+                                                <div class="bg-gray-50 p-2.5 rounded border border-gray-200 mt-1 whitespace-pre-wrap">{{ question.student_answer|default:"(No answer)" }}</div>
+                                            {% endif %}
+                                            {% if can_manage or student_submission.score != None %}
+                                                <p class="text-sm font-bold text-green-700 mt-2">Correct Answer: {{ question|answer_label|default:"(Open ended)" }}</p>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                </div>
                             </div>
+                            {% endfor %}
                         </div>
-                        {% endfor %}
                     </div>
-                </div>
+                {% endif %}
             {% endif %}
         </div>
     </section>
 
+    {% if can_manage %}
     <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
         <div class="border-b border-gray-100 p-6 sm:p-8">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -123,19 +196,20 @@
 
         {% if submission_rows %}
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full text-sm divide-y divide-gray-200">
+                    <thead class="bg-gray-50 border-b border-gray-200">
                         <tr>
                             <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Student</th>
                             <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">ID Number</th>
                             <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Submitted</th>
                             <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Score</th>
                             <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                            <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 bg-white">
                         {% for row in submission_rows %}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50 transition">
                                 <td class="px-4 py-4 font-semibold text-gray-900">
                                     {% if row.student.last_name %}
                                         {{ row.student.last_name }}{% if row.student.first_name %}, {{ row.student.first_name }}{% endif %}
@@ -163,6 +237,15 @@
                                         <span class="rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">Missing</span>
                                     {% endif %}
                                 </td>
+                                <td class="px-4 py-4">
+                                    {% if row.submission %}
+                                        <a href="{% url 'academics:grade_submission' course.public_id assignment.public_id row.student.id %}" class="inline-flex items-center gap-1.5 text-sm font-semibold text-green-700 hover:text-green-600 transition">
+                                            View / Grade <i class="bi bi-arrow-right"></i>
+                                        </a>
+                                    {% else %}
+                                        <span class="text-sm text-gray-400 italic">No submission</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -176,5 +259,254 @@
             </div>
         {% endif %}
     </section>
+    {% else %}
+    <!-- Student Submission Section -->
+    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+        <div class="border-b border-gray-100 pb-4 mb-6">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900">My Submission</h2>
+            <p class="mt-1 text-sm text-gray-500">Submit your work and review grades/feedback.</p>
+        </div>
+
+        {% if student_submission %}
+            <div class="space-y-6">
+                <!-- Grade display -->
+                {% if student_submission.score != None %}
+                    <div class="rounded-xl bg-green-50 border border-green-200 p-5 flex items-start gap-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-500 text-white">
+                            <i class="bi bi-patch-check text-lg"></i>
+                        </div>
+                        <div class="flex-1">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-green-700 block">Grade Received</span>
+                            <strong class="text-2xl font-bold text-green-900 mt-1 block">{{ student_submission.score }} / {{ assignment.max_score }}</strong>
+                            {% if student_submission.feedback %}
+                                <div class="mt-3 text-sm font-semibold text-green-950">Instructor Feedback:</div>
+                                <p class="text-sm text-green-900 whitespace-pre-wrap mt-1 bg-white p-3 rounded-lg border border-green-150">{{ student_submission.feedback }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="rounded-xl bg-amber-50 border border-amber-200 p-5 flex items-start gap-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white">
+                            <i class="bi bi-clock-history text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-amber-700 block">Status</span>
+                            <strong class="text-lg font-bold text-amber-900 mt-1 block">Submitted & Awaiting Grading</strong>
+                            <p class="text-sm text-amber-800 mt-1">Submitted at {{ student_submission.submitted_at|date:"M j, Y g:i A" }}</p>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- Submission notes / attachment display -->
+                {% if student_submission.student_notes or student_submission.attachment_url %}
+                    <div class="rounded-xl border border-gray-200 p-5 bg-gray-50 space-y-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-gray-900">Your Submission Details</h3>
+                        {% if student_submission.student_notes %}
+                            <div>
+                                <span class="text-xs text-gray-500 font-medium uppercase tracking-wider">Your Notes:</span>
+                                <div class="mt-1 text-sm text-gray-700 bg-white p-4 rounded-lg border border-gray-150 whitespace-pre-wrap shadow-inner">{{ student_submission.student_notes }}</div>
+                            </div>
+                        {% endif %}
+                        
+                        {% if student_submission.attachment_url %}
+                            <div>
+                                <span class="text-xs text-gray-500 font-medium uppercase tracking-wider">Attachment / Link:</span>
+                                <a href="{{ student_submission.attachment_url }}" target="_blank" class="mt-1 flex w-fit items-center gap-1.5 text-sm font-semibold text-green-700 hover:text-green-600 bg-white px-3.5 py-2 rounded-lg border border-gray-200 shadow-sm transition hover:bg-gray-50">
+                                    <i class="bi bi-box-arrow-up-right"></i> {{ student_submission.attachment_url }}
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                <!-- Resubmit option if not graded -->
+                {% if student_submission.score == None %}
+                    <div x-data="{ editing: false }" class="mt-6 border-t border-gray-150 pt-6">
+                        <button type="button" @click="editing = !editing" class="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition">
+                            <span x-show="!editing"><i class="bi bi-pencil"></i> Edit Submission</span>
+                            <span x-show="editing">Cancel Edit</span>
+                        </button>
+                        
+                        <div x-show="editing" x-cloak class="mt-6">
+                            <form method="post" class="space-y-6">
+                                {% csrf_token %}
+                                
+                                {% if questions %}
+                                    <div class="space-y-4">
+                                        <h3 class="text-sm font-semibold text-gray-900 mb-3 border-b pb-2">Questions</h3>
+                                        {% for question in questions %}
+                                            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+                                                <div class="flex justify-between items-start">
+                                                    <div class="font-semibold text-gray-900">Question {{ forloop.counter }}</div>
+                                                    <span class="text-sm font-semibold text-gray-500">{{ question.points }} pt{{ question.points|pluralize }}</span>
+                                                </div>
+                                                <div class="prose prose-sm max-w-none text-gray-900 font-medium" data-question-content>{{ question|question_content }}</div>
+                                                
+                                                <div class="mt-4 pt-3 border-t border-gray-100">
+                                                    {% if question.question_type == 'multiple_choice' %}
+                                                        <div class="space-y-2">
+                                                            {% for choice in question.choices %}
+                                                                {% with choice_val=choice.id|default:choice %}
+                                                                <label class="relative flex items-start p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition">
+                                                                    <div class="flex h-5 items-center">
+                                                                        <input type="radio" 
+                                                                               name="question_{{ question.id }}" 
+                                                                               value="{{ choice_val }}"
+                                                                               {% if question.student_answer == choice_val %}checked{% endif %}
+                                                                               class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                                                    </div>
+                                                                    <div class="ml-3 text-sm leading-6">
+                                                                        <span class="font-semibold text-gray-900">{{ choice|choice_label:forloop.counter0 }}.</span>
+                                                                        <span class="text-gray-700 ml-1">{{ choice|choice_text }}</span>
+                                                                    </div>
+                                                                </label>
+                                                                {% endwith %}
+                                                            {% endfor %}
+                                                        </div>
+                                                    {% elif question.question_type == 'true_false' %}
+                                                        <div class="grid grid-cols-2 gap-4">
+                                                            <label class="relative flex items-start p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition">
+                                                                    <div class="flex h-5 items-center">
+                                                                        <input type="radio" 
+                                                                               name="question_{{ question.id }}" 
+                                                                               value="True"
+                                                                               {% if question.student_answer == 'True' %}checked{% endif %}
+                                                                               class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                                                    </div>
+                                                                    <div class="ml-3 text-sm leading-6 font-semibold text-gray-900">True</div>
+                                                            </label>
+                                                            <label class="relative flex items-start p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition">
+                                                                    <div class="flex h-5 items-center">
+                                                                        <input type="radio" 
+                                                                               name="question_{{ question.id }}" 
+                                                                               value="False"
+                                                                               {% if question.student_answer == 'False' %}checked{% endif %}
+                                                                               class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                                                    </div>
+                                                                    <div class="ml-3 text-sm leading-6 font-semibold text-gray-900">False</div>
+                                                            </label>
+                                                        </div>
+                                                    {% elif question.question_type == 'number' %}
+                                                        <div>
+                                                            <input type="number" step="any" name="question_{{ question.id }}" value="{{ question.student_answer }}" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="Enter numeric answer...">
+                                                        </div>
+                                                    {% else %}
+                                                        <div>
+                                                            <textarea name="question_{{ question.id }}" rows="3" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="Write your answer here...">{{ question.student_answer }}</textarea>
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <div class="border-t border-gray-100 pt-6 space-y-4">
+                                    <div>
+                                        <label for="content_edit" class="block text-sm font-semibold leading-6 text-gray-900">Notes / Comments (Optional)</label>
+                                        <textarea id="content_edit" name="content" rows="4" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="Add any notes for the instructor...">{{ student_submission.student_notes }}</textarea>
+                                    </div>
+                                    <div>
+                                        <label for="attachment_url_edit" class="block text-sm font-semibold leading-6 text-gray-900">Attachment Link / URL (Optional)</label>
+                                        <input type="url" id="attachment_url_edit" name="attachment_url" value="{{ student_submission.attachment_url }}" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="https://example.com/your-work">
+                                    </div>
+                                    <div class="pt-2">
+                                        <button type="submit" class="inline-flex justify-center rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 transition shadow">Save Changes</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <!-- Fresh Submission Form -->
+            <form method="post" class="space-y-6">
+                {% csrf_token %}
+                
+                {% if questions %}
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-3 border-b pb-2">Questions</h3>
+                        {% for question in questions %}
+                            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+                                <div class="flex justify-between items-start">
+                                    <div class="font-semibold text-gray-900">Question {{ forloop.counter }}</div>
+                                    <span class="text-sm font-semibold text-gray-500">{{ question.points }} pt{{ question.points|pluralize }}</span>
+                                </div>
+                                <div class="prose prose-sm max-w-none text-gray-900 font-medium" data-question-content>{{ question|question_content }}</div>
+                                
+                                <div class="mt-4 pt-3 border-t border-gray-100">
+                                    {% if question.question_type == 'multiple_choice' %}
+                                        <div class="space-y-2">
+                                            {% for choice in question.choices %}
+                                                {% with choice_val=choice.id|default:choice %}
+                                                <label class="relative flex items-start p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition">
+                                                    <div class="flex h-5 items-center">
+                                                        <input type="radio" 
+                                                               name="question_{{ question.id }}" 
+                                                               value="{{ choice_val }}"
+                                                               class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                                    </div>
+                                                    <div class="ml-3 text-sm leading-6">
+                                                        <span class="font-semibold text-gray-900">{{ choice|choice_label:forloop.counter0 }}.</span>
+                                                        <span class="text-gray-700 ml-1">{{ choice|choice_text }}</span>
+                                                    </div>
+                                                </label>
+                                                {% endwith %}
+                                            {% endfor %}
+                                        </div>
+                                    {% elif question.question_type == 'true_false' %}
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <label class="relative flex items-start p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition">
+                                                    <div class="flex h-5 items-center">
+                                                        <input type="radio" 
+                                                               name="question_{{ question.id }}" 
+                                                               value="True"
+                                                               class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                                    </div>
+                                                    <div class="ml-3 text-sm leading-6 font-semibold text-gray-900">True</div>
+                                            </label>
+                                            <label class="relative flex items-start p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition">
+                                                    <div class="flex h-5 items-center">
+                                                        <input type="radio" 
+                                                               name="question_{{ question.id }}" 
+                                                               value="False"
+                                                               class="h-4 w-4 border-gray-300 text-green-600 focus:ring-green-600">
+                                                    </div>
+                                                    <div class="ml-3 text-sm leading-6 font-semibold text-gray-900">False</div>
+                                            </label>
+                                        </div>
+                                    {% elif question.question_type == 'number' %}
+                                        <div>
+                                            <input type="number" step="any" name="question_{{ question.id }}" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="Enter numeric answer...">
+                                        </div>
+                                    {% else %}
+                                        <div>
+                                            <textarea name="question_{{ question.id }}" rows="3" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="Write your answer here..."></textarea>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div class="border-t border-gray-100 pt-6 space-y-4">
+                    <div>
+                        <label for="content" class="block text-sm font-semibold leading-6 text-gray-900">Notes / Comments (Optional)</label>
+                        <textarea id="content" name="content" rows="4" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="Add any notes for the instructor..."></textarea>
+                    </div>
+                    <div>
+                        <label for="attachment_url" class="block text-sm font-semibold leading-6 text-gray-900">Attachment Link / URL (Optional)</label>
+                        <input type="url" id="attachment_url" name="attachment_url" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600 sm:text-sm" placeholder="https://example.com/your-work">
+                    </div>
+                    <div class="pt-2">
+                        <button type="submit" class="inline-flex justify-center rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 transition shadow">Submit Work</button>
+                    </div>
+                </div>
+            </form>
+        {% endif %}
+    </section>
+    {% endif %}
 </div>
 {% endblock %}

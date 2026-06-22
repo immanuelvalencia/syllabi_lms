@@ -10,7 +10,7 @@
         <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{{ course.title }}</h1>
     </div>
     <div class="flex flex-wrap gap-2">
-        <a href="{% url 'academics:course_activities' course.slug %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+        <a href="{% url 'academics:course_activities' course.public_id %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
             <i class="bi bi-journal-check"></i>
             Activities
         </a>
@@ -32,10 +32,10 @@
     viewerType: '', 
     viewerTitle: '',
     analyticsFilterOpen: false,
-    analyticsSectionIds: [{% for row in course_analytics.rows %}'{{ row.section.id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
-    selectedAnalyticsSections: [{% for row in course_analytics.rows %}'{{ row.section.id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+    analyticsSectionIds: [{% for row in course_analytics.rows %}'{{ row.section.public_id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+    selectedAnalyticsSections: [{% for row in course_analytics.rows %}'{{ row.section.public_id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
     analyticsExportUrl() {
-        return '{% url "academics:course_analytics_pdf" course.slug %}?sections=' + this.selectedAnalyticsSections.join(',');
+        return '{% url "academics:course_analytics_pdf" course.public_id %}?sections=' + this.selectedAnalyticsSections.join(',');
     }
 }">
 
@@ -160,7 +160,7 @@
 
         <div class="grid gap-6 sm:grid-cols-3">
             <!-- Lesson Plan Generator -->
-            <a href="{% url 'academics:lesson_plan_index' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
+            <a href="{% url 'academics:lesson_plan_index' course.public_id %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
                 <div class="flex items-center gap-x-4">
                     <div class="flex h-12 w-12 flex-none items-center justify-center rounded-lg bg-green-50 group-hover:bg-green-100 transition">
                         <i class="bi bi-journal-text text-xl text-green-600"></i>
@@ -174,7 +174,7 @@
             </a>
 
             <!-- Resource Assistant -->
-            <a href="{% url 'academics:resource_assistant_index' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
+            <a href="{% url 'academics:resource_assistant_index' course.public_id %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
                 <div class="flex items-center gap-x-4">
                     <div class="flex h-12 w-12 flex-none items-center justify-center rounded-lg bg-green-50 group-hover:bg-green-100 transition">
                         <i class="bi bi-search text-xl text-green-600"></i>
@@ -188,7 +188,7 @@
             </a>
 
             <!-- Class Activities Generator -->
-            <a href="{% url 'academics:activity_sheet_index' course.slug %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
+            <a href="{% url 'academics:activity_sheet_index' course.public_id %}" class="group relative flex flex-col items-start justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-green-300">
                 <div class="flex items-center gap-x-4">
                     <div class="flex h-12 w-12 flex-none items-center justify-center rounded-lg bg-green-50 group-hover:bg-green-100 transition">
                         <i class="bi bi-file-earmark-spreadsheet text-xl text-green-600"></i>
@@ -275,7 +275,7 @@
                             <div class="max-h-64 overflow-y-auto">
                                 {% for row in course_analytics.rows %}
                                     <label class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                        <input type="checkbox" value="{{ row.section.id }}" x-model="selectedAnalyticsSections" class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600">
+                                        <input type="checkbox" value="{{ row.section.public_id }}" x-model="selectedAnalyticsSections" class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-600">
                                         {{ row.section.name }}
                                     </label>
                                 {% endfor %}
@@ -301,7 +301,7 @@
                         </thead>
                         <tbody class="divide-y divide-gray-200 bg-white">
                             {% for row in course_analytics.rows %}
-                                <tr x-show="selectedAnalyticsSections.includes('{{ row.section.id }}')">
+                                <tr x-show="selectedAnalyticsSections.includes('{{ row.section.public_id }}')">
                                     <td class="px-4 py-4 align-top">
                                         <a href="{{ row.section.get_absolute_url }}" class="font-semibold text-green-700 hover:text-green-600">{{ row.section.name }}</a>
                                         <div class="mt-1 text-xs text-gray-500">{{ row.section.meeting_days|default:"No schedule" }}</div>

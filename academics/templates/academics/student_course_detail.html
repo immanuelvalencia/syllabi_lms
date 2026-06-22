@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} | Student Portal{% endblock %}
+{% block page_title %}{{ course.title }}{% endblock %}
+
+{% block page_header %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <p class="text-sm font-semibold leading-6 text-green-600 uppercase tracking-widest">Student Portal</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">{{ course.title }}</h1>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <a href="{% url 'academics:student_dashboard' %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            <i class="bi bi-arrow-left"></i>
+            Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div x-data="{ 
+    currentTab: 'overview',
+    viewerModalOpen: false, 
+    viewerUrl: '', 
+    viewerType: '', 
+    viewerTitle: ''
+}" class="space-y-8">
+
+    <!-- Tabs Navigation -->
+    <div class="border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+            <button @click="currentTab = 'overview'" :class="currentTab === 'overview' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-all duration-200">
+                <i class="bi bi-info-circle mr-2"></i>Overview
+            </button>
+            <button @click="currentTab = 'lessons'" :class="currentTab === 'lessons' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-all duration-200">
+                <i class="bi bi-journal-text mr-2"></i>Lesson Plan
+            </button>
+            <button @click="currentTab = 'materials'" :class="currentTab === 'materials' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-all duration-200">
+                <i class="bi bi-file-earmark-arrow-down mr-2"></i>Materials
+            </button>
+            <button @click="currentTab = 'resources'" :class="currentTab === 'resources' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-all duration-200">
+                <i class="bi bi-patch-check mr-2"></i>Approved Resources
+            </button>
+            <button @click="currentTab = 'activities'" :class="currentTab === 'activities' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'" class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-all duration-200">
+                <i class="bi bi-card-checklist mr-2"></i>Activities
+            </button>
+        </nav>
+    </div>
+
+    <!-- Tab Contents -->
+    
+    <!-- OVERVIEW TAB -->
+    <div x-show="currentTab === 'overview'" class="space-y-6">
+        <!-- Integrated Section Card -->
+        <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+            <div class="border-b border-gray-100 pb-4 mb-6">
+                <h2 class="text-xl font-bold tracking-tight text-gray-900">My Class Section</h2>
+                <p class="mt-1 text-sm text-gray-500">Your scheduling and details for this course section.</p>
+            </div>
+            
+            {% if student_section %}
+                <div class="grid gap-6 md:grid-cols-3">
+                    <div class="rounded-xl bg-green-50/50 border border-green-100 p-5 flex items-start gap-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-500 text-white">
+                            <i class="bi bi-calendar3 text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-green-700 block">Meeting Days</span>
+                            <strong class="text-gray-900 text-base mt-1 block">{{ student_section.name }}</strong>
+                            <span class="text-sm text-gray-600 mt-1 block">{{ student_section.meeting_days|default:"Schedule days not set" }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="rounded-xl bg-blue-50/50 border border-blue-100 p-5 flex items-start gap-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white">
+                            <i class="bi bi-clock text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-blue-700 block">Class Time</span>
+                            {% if student_section.start_time and student_section.end_time %}
+                                <strong class="text-gray-900 text-base mt-1 block">{{ student_section.start_time|time:"g:i A" }} to {{ student_section.end_time|time:"g:i A" }}</strong>
+                            {% else %}
+                                <strong class="text-gray-900 text-base mt-1 block">TBD</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="rounded-xl bg-purple-50/50 border border-purple-100 p-5 flex items-start gap-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500 text-white">
+                            <i class="bi bi-geo-alt text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-purple-700 block">Classroom / Location</span>
+                            <strong class="text-gray-900 text-base mt-1 block">{{ student_section.location|default:"Online or Not Set" }}</strong>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                    <div class="flex items-center gap-2">
+                        <i class="bi bi-exclamation-triangle-fill text-lg"></i>
+                        <span class="font-semibold">Section Enrollment Needed:</span>
+                        <span>You are enrolled in the course but not currently assigned to a section schedule. Please contact your instructor.</span>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Course Details -->
+        <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Course Description</h2>
+            <div class="prose max-w-none text-gray-700">
+                {{ course.description|default:"Course description has not been added yet."|linebreaks }}
+            </div>
+            
+            <div class="mt-8 border-t border-gray-100 pt-6">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Instructor Information</h3>
+                <div class="mt-3 flex items-center gap-4">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-gray-700 font-bold text-lg">
+                        {{ course.instructor.first_name|first|default:course.instructor.username|first }}
+                    </div>
+                    <div>
+                        <strong class="text-gray-900 block">{{ course.instructor.get_full_name|default:course.instructor.username }}</strong>
+                        <span class="text-sm text-gray-500">{{ course.instructor.email }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LESSON PLAN TAB -->
+    <div x-show="currentTab === 'lessons'" class="space-y-6">
+        <!-- Lessons list -->
+        <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+            <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Course Syllabus & Lessons</h2>
+            
+            <div class="space-y-4">
+                {% for lesson in lessons %}
+                    <article class="rounded-xl border border-gray-200 bg-white p-5 hover:border-green-300 transition-colors">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div>
+                                <span class="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 ring-1 ring-inset ring-green-600/20">Lesson {{ lesson.order }}</span>
+                                <h3 class="text-lg font-bold text-gray-900 mt-2">{{ lesson.title }}</h3>
+                                {% if lesson.summary %}
+                                    <p class="mt-2 text-sm text-gray-600">{{ lesson.summary }}</p>
+                                {% endif %}
+                            </div>
+                            {% if lesson.resource_url %}
+                                <a href="{{ lesson.resource_url }}" target="_blank" class="inline-flex shrink-0 items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                    <i class="bi bi-box-arrow-up-right text-gray-500"></i> Open Resource
+                                </a>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% empty %}
+                    <p class="text-gray-500 italic">No published lessons yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- AI Generated Lesson Plans -->
+        {% if lesson_plans %}
+            <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+                <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-2">Lesson Plans</h2>
+                <p class="text-sm text-gray-500 mb-6">Detailed study plans generated for this course.</p>
+                
+                <div class="grid gap-4 sm:grid-cols-2">
+                    {% for plan in lesson_plans %}
+                        <a href="{% url 'academics:lesson_plan_detail' course.public_id plan.id %}" class="block group">
+                            <article class="rounded-xl border border-gray-200 bg-white p-5 hover:border-green-300 hover:shadow-sm transition-all h-full flex flex-col justify-between">
+                                <div>
+                                    <h3 class="text-base font-bold text-gray-900 group-hover:text-green-600 transition-colors">{{ plan.title }}</h3>
+                                    <p class="text-xs text-gray-500 mt-1">Topic: {{ plan.topic|default:"Course Overview" }}</p>
+                                    <p class="text-xs text-gray-500 mt-1">Modules: {{ plan.modules }} | {% if plan.duration_minutes %}{{ plan.duration_minutes }} mins{% else %}Flex time{% endif %}</p>
+                                </div>
+                                <div class="mt-4 flex items-center justify-between text-sm font-medium text-green-600 border-t border-gray-100 pt-3">
+                                    <span>Read lesson plan</span>
+                                    <i class="bi bi-arrow-right"></i>
+                                </div>
+                            </article>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- MATERIALS TAB -->
+    <div x-show="currentTab === 'materials'" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+        <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Course Materials & Files</h2>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for material in materials %}
+                <article class="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div class="p-5 flex-1 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <h3 class="text-sm font-semibold text-gray-900 truncate pr-4" title="{{ material.display_name }}">{{ material.display_name }}</h3>
+                                {% if material.material_type == "pdf" %}
+                                    <i class="bi bi-file-earmark-pdf text-red-500 text-xl"></i>
+                                {% elif material.material_type == "video" %}
+                                    <i class="bi bi-file-earmark-play text-blue-500 text-xl"></i>
+                                {% elif material.material_type == "presentation" %}
+                                    <i class="bi bi-file-earmark-slides text-yellow-500 text-xl"></i>
+                                {% elif material.material_type == "image" %}
+                                    <i class="bi bi-file-image text-green-500 text-xl"></i>
+                                {% else %}
+                                    <i class="bi bi-file-earmark text-gray-400 text-xl"></i>
+                                {% endif %}
+                            </div>
+                            <div class="mb-4 flex items-center gap-2">
+                                <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">{{ material.get_category_display }}</span>
+                                <span class="text-xs text-gray-500">{{ material.created_at|date:"M j, Y" }}</span>
+                            </div>
+                        </div>
+                        <div class="mt-auto flex gap-2 pt-4 border-t border-gray-100">
+                            <button @click="viewerModalOpen = true; viewerUrl = '{{ material.file.url }}'; viewerType = '{{ material.material_type }}'; viewerTitle = '{{ material.display_name }}'" type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-semibold text-green-600 hover:bg-green-100">
+                                View
+                            </button>
+                            <a href="{{ material.file.url }}" download class="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                <i class="bi bi-download"></i> Download
+                            </a>
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="col-span-full py-8 text-center text-gray-500 italic">
+                    No course materials uploaded yet.
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- APPROVED RESOURCES TAB -->
+    <div x-show="currentTab === 'resources'" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+        <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-2">Approved Study Resources</h2>
+        <p class="text-sm text-gray-500 mb-6">Extra readings, lecture videos, and reference links approved by your instructor.</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {% for resource in approved_resources %}
+                <article class="rounded-xl border border-gray-200 bg-white p-5 hover:border-green-300 hover:shadow-sm transition-all flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 ring-1 ring-inset ring-green-600/20">
+                                {% if resource.resource_type == "video" %}<i class="bi bi-play-circle mr-1"></i>Video{% else %}<i class="bi bi-book mr-1"></i>Book / Reading{% endif %}
+                            </span>
+                            
+                            <!-- Tags -->
+                            <div class="flex gap-1">
+                                {% for tag in resource.tags.all %}
+                                    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium text-white" style="background-color: {{ tag.color }}">{{ tag.name }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        <h3 class="text-base font-bold text-gray-900 mb-2">{{ resource.title }}</h3>
+                        {% if resource.description %}
+                            <p class="text-sm text-gray-600 mb-4">{{ resource.description }}</p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mt-4 border-t border-gray-100 pt-3 flex justify-between items-center">
+                        <span class="text-xs text-gray-400">Approved via {{ resource.session.topic }}</span>
+                        <a href="{{ resource.url }}" target="_blank" class="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                            <i class="bi bi-box-arrow-up-right"></i> Open Link
+                        </a>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="col-span-full py-8 text-center text-gray-500 italic">
+                    No approved supplementary resources have been added yet.
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ACTIVITIES TAB -->
+    <div x-show="currentTab === 'activities'" class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5 p-6 sm:p-8">
+        <h2 class="text-xl font-bold tracking-tight text-gray-900 mb-6">Course Activities & Assignments</h2>
+        
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Activity</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Type</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Due Date</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                        <th scope="col" class="px-4 py-3 text-left font-semibold text-gray-700">Grade</th>
+                        <th scope="col" class="px-4 py-3 text-right font-semibold text-gray-700">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 bg-white">
+                    {% for row in activities %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-4">
+                                <strong class="text-gray-900 block">{{ row.activity.title }}</strong>
+                                <span class="text-xs text-gray-500">{{ row.activity.activity_section.name|default:"General Assignments" }}</span>
+                            </td>
+                            <td class="px-4 py-4 text-gray-600 capitalize">
+                                {{ row.activity.get_activity_type_display }}
+                            </td>
+                            <td class="px-4 py-4 text-gray-600">
+                                {% if row.activity.due_at %}
+                                    {{ row.activity.due_at|date:"M j, Y g:i A" }}
+                                    {% if row.activity.is_due_soon %}
+                                        <span class="ml-2 inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">Due soon</span>
+                                    {% endif %}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-4">
+                                {% if row.submission %}
+                                    {% if row.submission.score != None %}
+                                        <span class="inline-flex items-center rounded-md bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Graded</span>
+                                    {% else %}
+                                        <span class="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">Submitted</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="inline-flex items-center rounded-md bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">Not Submitted</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-4 text-gray-900 font-semibold">
+                                {% if row.submission and row.submission.score != None %}
+                                    {{ row.submission.score }} / {{ row.activity.max_score }}
+                                {% else %}
+                                    -- / {{ row.activity.max_score }}
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-4 text-right">
+                                <a href="{% url 'academics:assignment_detail' course.public_id row.activity.public_id %}" class="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-500">
+                                    {% if row.submission %}View / Edit{% else %}Submit{% endif %} <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="p-8 text-center text-gray-500 italic">No activities assigned for your section yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- MATERIAL VIEWER MODAL -->
+    <div x-show="viewerModalOpen" x-cloak class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div x-show="viewerModalOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-gray-900/80 transition-opacity"></div>
+      <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+          <div x-show="viewerModalOpen" @click.away="viewerModalOpen = false; viewerType = ''" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-5xl text-gray-900">
+            <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="text-lg font-semibold text-gray-900" x-text="viewerTitle">File Viewer</h3>
+                <button type="button" @click="viewerModalOpen = false; viewerType = ''" class="rounded-md text-gray-400 hover:text-gray-500">
+                    <span class="sr-only">Close</span>
+                    <i class="bi bi-x text-2xl"></i>
+                </button>
+            </div>
+            
+            <div class="p-6">
+                <!-- PDF Viewer -->
+                <template x-if="viewerType === 'pdf'">
+                    <iframe :src="viewerUrl" class="w-full h-[650px] border-0 rounded-lg"></iframe>
+                </template>
+                
+                <!-- Video Viewer -->
+                <template x-if="viewerType === 'video'">
+                    <video controls class="w-full max-h-[650px] rounded-lg bg-black">
+                        <source :src="viewerUrl">
+                        Your browser does not support the video tag.
+                    </video>
+                </template>
+                
+                <!-- Image Viewer -->
+                <template x-if="viewerType === 'image'">
+                    <div class="flex justify-center bg-gray-50 p-4 rounded-lg">
+                        <img :src="viewerUrl" class="max-w-full max-h-[600px] object-contain rounded-lg shadow-sm">
+                    </div>
+                </template>
+                
+                <!-- Fallback Document View / Download Info -->
+                <template x-if="viewerType === 'document' || viewerType === 'presentation' || viewerType === ''">
+                    <div class="text-center py-12">
+                        <i class="bi bi-file-earmark-arrow-down text-5xl text-gray-400"></i>
+                        <h4 class="mt-4 text-base font-bold text-gray-900">Document cannot be previewed in-browser</h4>
+                        <p class="mt-2 text-sm text-gray-500">Please download the file to view its contents.</p>
+                        <a :href="viewerUrl" download class="mt-6 inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                            <i class="bi bi-download"></i> Download File
+                        </a>
+                    </div>
+                </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+</div>
+{% endblock %}

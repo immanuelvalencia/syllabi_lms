@@ -24,7 +24,7 @@
             <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-create-section'))" class="inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-white px-4 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                 <i class="bi bi-plus-lg"></i> Create Section
             </button>
-            <a href="{% url 'academics:assignment_create' course.slug %}{% if section %}?course_section={{ section.id }}{% endif %}" class="inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+            <a href="{% url 'academics:assignment_create' course.public_id %}{% if section %}?course_section={{ section.public_id }}{% endif %}" class="inline-flex h-10 items-center justify-center gap-x-2 rounded-md bg-green-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
                 <i class="bi bi-journal-plus"></i> Create Assignment
             </a>
         </div>
@@ -51,7 +51,7 @@
         <div
             class="grid gap-4 bg-gray-50 p-4 sm:p-6 xl:grid-cols-2"
             data-assignment-board
-            data-reorder-url="{% url 'academics:assignment_reorder' course.slug %}"
+            data-reorder-url="{% url 'academics:assignment_reorder' course.public_id %}"
             data-csrf="{{ csrf_token }}"
         >
             {% for card in activity_section_cards %}
@@ -65,7 +65,7 @@
                         </div>
                         {% if can_manage %}
                             <div class="flex items-center gap-2">
-                                <a href="{% url 'academics:assignment_create' course.slug %}?section={{ card.activity_section.id }}" class="inline-flex h-8 items-center gap-x-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                <a href="{% url 'academics:assignment_create' course.public_id %}?section={{ card.activity_section.id }}" class="inline-flex h-8 items-center gap-x-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                                     <i class="bi bi-plus-lg"></i> Add
                                 </a>
                                 <details class="group relative">
@@ -97,7 +97,7 @@
                         <p class="mt-1 text-sm text-gray-500">No section selected</p>
                     </div>
                     {% if can_manage %}
-                        <a href="{% url 'academics:assignment_create' course.slug %}" class="inline-flex h-8 w-fit items-center gap-x-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                        <a href="{% url 'academics:assignment_create' course.public_id %}" class="inline-flex h-8 w-fit items-center gap-x-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                             <i class="bi bi-plus-lg"></i> Add
                         </a>
                     {% endif %}

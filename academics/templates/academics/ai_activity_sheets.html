@@ -10,7 +10,7 @@
         <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Class Activities</h1>
     </div>
     <div class="flex gap-2">
-        <a href="{% url 'academics:course_detail' course.slug %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+        <a href="{% url 'academics:course_detail' course.public_id %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
             <i class="bi bi-arrow-left"></i>
             Back to course
         </a>
@@ -22,7 +22,7 @@
 <div class="flex flex-col lg:flex-row gap-8 items-start">
     <!-- Sidebar -->
     <div class="w-full lg:w-64 flex-shrink-0 space-y-6">
-        <a href="{% url 'academics:ai_activity_sheets' course.slug %}" class="flex items-center justify-center w-full gap-x-2 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+        <a href="{% url 'academics:ai_activity_sheets' course.public_id %}" class="flex items-center justify-center w-full gap-x-2 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
             <i class="bi bi-plus-lg"></i> Generate New
         </a>
 
@@ -30,7 +30,7 @@
             <ul role="list" class="-mx-2 space-y-1">
                 {% for sheet in all_sheets %}
                 <li>
-                    <a href="{% url 'academics:activity_sheet_detail' course.slug sheet.id %}" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 hover:bg-gray-50 hover:text-green-600">
+                    <a href="{% url 'academics:activity_sheet_detail' course.public_id sheet.id %}" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 hover:bg-gray-50 hover:text-green-600">
                         <i class="bi bi-file-earmark-spreadsheet text-gray-400 group-hover:text-green-600"></i>
                         <span class="truncate">{{ sheet.title }}</span>
                     </a>

@@ -114,3 +114,64 @@ Please generate the lesson plan now.
         return response.text
     except Exception as e:
         return f"Error generating lesson plan: {str(e)}"
+
+
+def generate_submission_analysis(submission, answers_breakdown, student_notes=""):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return "Error: GEMINI_API_KEY environment variable is not configured."
+        
+    client = genai.Client(api_key=api_key)
+    
+    assignment = submission.assignment
+    student = submission.student
+    
+    system_prompt = (
+        "You are an expert academic evaluator and teaching assistant. "
+        "Your task is to analyze a student's submission to a quiz or assignment. "
+        "Identify what items/questions they got correct vs incorrect. "
+        "Provide detailed pedagogical insights, highlighting their strengths, weaknesses, "
+        "and suggestions for improvement. "
+        "IMPORTANT: You must return the output STRICTLY in Markdown format, with clear headings, "
+        "bullet points, and premium styling formatting. Do not wrap the output in markdown code blocks. "
+        "CRITICAL: Do NOT use any emojis, emoji symbols, or icons anywhere in your generated report."
+    )
+    
+    breakdown_text = []
+    for i, ans in enumerate(answers_breakdown, 1):
+        status = "Correct" if ans["is_correct"] else "Incorrect"
+        points_info = f"{ans['points']} pts"
+        q_text = f"Question {i}: {ans['question_text']}\n"
+        q_text += f"Student's Answer: {ans['student_answer'] or '(No Answer)'}\n"
+        q_text += f"Correct Answer: {ans['correct_answer'] or '(Open Ended/Manual)'}\n"
+        q_text += f"Result: {status} ({points_info})\n"
+        breakdown_text.append(q_text)
+        
+    breakdown_formatted = "\n---\n".join(breakdown_text)
+    
+    prompt = f"""
+Assignment Title: {assignment.title}
+Max Score: {assignment.max_score}
+Student Name: {student.get_full_name() or student.username}
+Student Notes/Comments: {student_notes or '(None)'}
+
+Student Submission Answers Breakdown:
+{breakdown_formatted}
+
+Please analyze this student's work.
+In your analysis, include:
+1. Performance Summary (overall score vs max score context).
+2. Strengths (what concepts did they demonstrate mastery of?).
+3. Weaknesses (what concepts did they struggle with or get wrong?).
+4. Recommendations & Study Suggestions (specific topics, actions, or focus areas to improve their understanding).
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=system_prompt)
+        )
+        return response.text
+    except Exception as e:
+        return f"Error generating submission analysis: {str(e)}"

@@ -96,7 +96,7 @@ class CourseSection(models.Model):
         return f"{self.course.code} - {self.name}"
 
     def get_absolute_url(self):
-        return reverse("academics:section_detail", args=[self.course.slug or self.course.code, self.id])
+        return reverse("academics:section_detail", args=[self.course.slug or self.course.code, self.public_id])
 
 
 class ActivitySection(models.Model):
@@ -185,6 +185,7 @@ class Assignment(models.Model):
         ASSIGNMENT = "assignment", "Assignment"
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="assignments")
+    public_id = models.CharField(max_length=36, default=generate_short_id, editable=False, unique=True)
     course_section = models.ForeignKey(
         CourseSection,
         on_delete=models.SET_NULL,
@@ -211,7 +212,7 @@ class Assignment(models.Model):
     instructions = models.TextField(blank=True)
     time_limit_minutes = models.PositiveIntegerField(null=True, blank=True)
     due_at = models.DateTimeField(null=True, blank=True)
-    max_score = models.PositiveIntegerField(default=0)
+    max_score = models.DecimalField(max_digits=7, decimal_places=2, default=0)
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -220,6 +221,9 @@ class Assignment(models.Model):
 
     def __str__(self):
         return f"{self.course.code}: {self.title}"
+
+    def get_absolute_url(self):
+        return reverse("academics:assignment_detail", args=[self.course.public_id, self.public_id])
 
     @property
     def is_due_soon(self):
@@ -238,9 +242,12 @@ class Question(models.Model):
     assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name="questions")
     text = models.TextField()
     question_type = models.CharField(max_length=20, choices=QuestionType.choices)
-    points = models.PositiveIntegerField(default=1)
+    points = models.DecimalField(max_digits=7, decimal_places=2, default=1)
     choices = models.JSONField(default=list, blank=True)
     correct_answer = models.TextField(blank=True)
+    correct_answers = models.JSONField(default=list, blank=True)
+    content = models.JSONField(default=dict, blank=True)
+    answer_settings = models.JSONField(default=dict, blank=True)
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -265,6 +272,7 @@ class Submission(models.Model):
     attachment_url = models.URLField(blank=True)
     score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     feedback = models.TextField(blank=True)
+    ai_analysis = models.TextField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     graded_at = models.DateTimeField(null=True, blank=True)
 

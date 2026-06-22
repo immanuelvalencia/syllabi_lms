@@ -10,14 +10,16 @@
         <h1 class="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">Generated Lesson Plans</h1>
     </div>
     <div class="flex gap-2">
-        <a href="{% url 'academics:course_detail' course.slug %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+        <a href="{% url 'academics:course_detail' course.public_id %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
             <i class="bi bi-arrow-left"></i>
             Back to course
         </a>
-        <a href="{% url 'academics:ai_lesson_plan' course.slug %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+        {% if profile.role != 'student' %}
+        <a href="{% url 'academics:ai_lesson_plan' course.public_id %}" class="inline-flex h-9 items-center gap-x-2 rounded-md bg-green-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
             <i class="bi bi-plus-lg"></i>
             Generate New
         </a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -40,7 +42,7 @@
                     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                         <div>
                             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                                <a href="{% url 'academics:lesson_plan_detail' course.slug plan.id %}" style="font-size:1.1rem; font-weight:600; color:#111827; text-decoration:none;" onmouseover="this.style.color='#16a34a';" onmouseout="this.style.color='#111827';">
+                                <a href="{% url 'academics:lesson_plan_detail' course.public_id plan.id %}" style="font-size:1.1rem; font-weight:600; color:#111827; text-decoration:none;" onmouseover="this.style.color='#16a34a';" onmouseout="this.style.color='#111827';">
                                     {{ plan.title|default:"Generating Lesson Plan..." }}
                                 </a>
                                 {% if plan.status == 'queued' or plan.status == 'running' %}
@@ -55,15 +57,17 @@
                             </p>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            <a href="{% url 'academics:lesson_plan_detail' course.slug plan.id %}" style="display:inline-flex; align-items:center; padding:6px 12px; font-size:0.875rem; font-weight:500; border:1px solid #d1d5db; border-radius:6px; color:#374151; background:#fff; text-decoration:none;" onmouseover="this.style.background='#f9fafb';" onmouseout="this.style.background='#fff';">
+                            <a href="{% url 'academics:lesson_plan_detail' course.public_id plan.id %}" style="display:inline-flex; align-items:center; padding:6px 12px; font-size:0.875rem; font-weight:500; border:1px solid #d1d5db; border-radius:6px; color:#374151; background:#fff; text-decoration:none;" onmouseover="this.style.background='#f9fafb';" onmouseout="this.style.background='#fff';">
                                 View
                             </a>
-                            <form method="post" action="{% url 'academics:lesson_plan_delete' course.slug plan.id %}" onsubmit="return confirm('Are you sure you want to delete this lesson plan?');">
+                            {% if profile.role != 'student' %}
+                            <form method="post" action="{% url 'academics:lesson_plan_delete' course.public_id plan.id %}" onsubmit="return confirm('Are you sure you want to delete this lesson plan?');">
                                 {% csrf_token %}
                                 <button type="submit" style="display:inline-flex; align-items:center; padding:6px 12px; font-size:0.875rem; font-weight:500; border:1px solid #fca5a5; border-radius:6px; color:#dc2626; background:#fee2e2; cursor:pointer;" onmouseover="this.style.background='#fecaca';" onmouseout="this.style.background='#fee2e2';">
                                     <i class="bi bi-trash3"></i>
                                 </button>
                             </form>
+                            {% endif %}
                         </div>
                     </div>
                 </li>
